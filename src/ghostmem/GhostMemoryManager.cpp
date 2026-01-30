@@ -1,3 +1,47 @@
+/*******************************************************************************
+ * GhostMem - Virtual RAM through Transparent Compression
+ * 
+ * Copyright (C) 2026 Swen Kalski
+ * 
+ * This file is part of GhostMem.
+ * 
+ * GhostMem is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * GhostMem is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with GhostMem. If not, see <https://www.gnu.org/licenses/>.
+ * 
+ * Contact: kalski.swen@gmail.com
+ ******************************************************************************/
+
+/**
+ * @file GhostMemoryManager.cpp
+ * @brief Core memory management system for transparent RAM compression
+ * 
+ * This file implements the GhostMemoryManager singleton, which provides
+ * virtual memory management with automatic compression and decompression.
+ * The system intercepts page faults to transparently compress inactive
+ * pages and decompress them on access, effectively multiplying available
+ * physical RAM through high-speed LZ4 compression.
+ * 
+ * Key Features:
+ * - Cross-platform support (Windows/Linux)
+ * - LRU-based page eviction policy
+ * - Transparent page fault handling
+ * - In-memory compression (no disk I/O)
+ * - Zero application code changes required
+ * 
+ * @author Swen Kalski
+ * @date 2026
+ */
+
 #include "GhostMemoryManager.h"
 
 #ifdef _WIN32
