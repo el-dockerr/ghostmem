@@ -41,6 +41,18 @@ jobs:
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
       
+    - name: Run Tests (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        cd build
+        ctest --output-on-failure --build-config ${{ matrix.build_type }}
+      
+    - name: Run Tests (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd build
+        ctest -C ${{ matrix.build_type }} --output-on-failure
+      
     - name: Test Demo Executable (Linux/macOS)
       if: runner.os != 'Windows'
       run: |

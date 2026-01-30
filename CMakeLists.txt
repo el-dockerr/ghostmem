@@ -56,9 +56,23 @@ install(FILES ${GHOSTMEM_HEADERS}
     DESTINATION include/ghostmem
 )
 
-# Enable testing if requested
-option(BUILD_TESTS "Build test programs" OFF)
+# Enable testing
+option(BUILD_TESTS "Build test programs" ON)
 if(BUILD_TESTS)
     enable_testing()
-    # Add test subdirectory when available
+    
+    # Test executable
+    add_executable(ghostmem_tests
+        tests/test_main.cpp
+        tests/test_basic_allocation.cpp
+        tests/test_compression.cpp
+        tests/test_lru.cpp
+        tests/test_allocator.cpp
+    )
+    
+    target_link_libraries(ghostmem_tests ghostmem)
+    target_include_directories(ghostmem_tests PRIVATE tests)
+    
+    # Add test to CTest
+    add_test(NAME ghostmem_tests COMMAND ghostmem_tests)
 endif()
