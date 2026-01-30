@@ -24,7 +24,9 @@ target_include_directories(ghostmem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # Create shared library
 add_library(ghostmem_shared SHARED ${GHOSTMEM_SOURCES} ${GHOSTMEM_HEADERS})
 target_include_directories(ghostmem_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set_target_properties(ghostmem_shared PROPERTIES OUTPUT_NAME ghostmem)
+if(NOT WIN32)
+    set_target_properties(ghostmem_shared PROPERTIES OUTPUT_NAME ghostmem)
+endif()
 
 # Platform-specific settings
 if(WIN32)
