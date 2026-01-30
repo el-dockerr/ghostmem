@@ -1,4 +1,6 @@
-#include <windows.h>
+#ifdef _WIN32
+    #include <windows.h>
+#endif
 #include <iostream>
 #include "ghostmem/GhostMemoryManager.h"
 #include "ghostmem/GhostAllocator.h"
@@ -46,6 +48,7 @@ int main() {
     std::cout << "   Reading string again (should trigger decompress)...\n";
     std::cout << "   Content check: " << (s.c_str() + 3995) << "\n";
 
+    std::cout << "\nPress Enter to exit...\n";
     std::cin.get();
     return 0;
 }

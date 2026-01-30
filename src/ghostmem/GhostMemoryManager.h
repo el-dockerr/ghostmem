@@ -1,6 +1,14 @@
 #pragma once
 
-#include <windows.h>
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <signal.h>
+    #include <sys/mman.h>
+    #include <unistd.h>
+    #include <cstring>
+#endif
+
 #include <map>
 #include <vector>
 #include <list>
@@ -21,7 +29,11 @@ private:
 
     GhostMemoryManager()
     {
+#ifdef _WIN32
         AddVectoredExceptionHandler(1, VectoredHandler);
+#else
+        InstallSignalHandler();
+#endif
     }
 
     // Internal function: Make room!
@@ -42,5 +54,10 @@ public:
 
     void FreezePage(void *page_start);
 
+#ifdef _WIN32
     static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExceptionInfo);
+#else
+    static void InstallSignalHandler();
+    static void SignalHandler(int sig, siginfo_t *info, void *context);
+#endif
 };
