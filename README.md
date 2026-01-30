@@ -1,5 +1,7 @@
 # GhostMem 👻
 
+**Version 0.8.0**
+
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
 ## Overview

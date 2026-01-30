@@ -4,10 +4,16 @@
 #include <iostream>
 #include "ghostmem/GhostMemoryManager.h"
 #include "ghostmem/GhostAllocator.h"
+#include "ghostmem/Version.h"
 
 
 // --- Test Program ---
 int main() {
+    std::cout << "===========================================\n";
+    std::cout << "GhostMem v" << GhostMem::GetVersionString() << "\n";
+    std::cout << "Virtual RAM through Transparent Compression\n";
+    std::cout << "===========================================\n\n";
+    
     std::cout << "--- GhostRAM with C++ Containers ---\n\n";
 
     // We create a vector that uses our allocator.
