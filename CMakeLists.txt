@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(GhostMem VERSION 1.0 LANGUAGES CXX C)
+project(GhostMem VERSION 0.8.0 LANGUAGES CXX C)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -14,16 +14,31 @@ set(GHOSTMEM_SOURCES
 set(GHOSTMEM_HEADERS
     src/ghostmem/GhostMemoryManager.h
     src/ghostmem/GhostAllocator.h
+    src/ghostmem/Version.h
     src/3rdparty/lz4.h
 )
 
 # Create static library
 add_library(ghostmem STATIC ${GHOSTMEM_SOURCES} ${GHOSTMEM_HEADERS})
 target_include_directories(ghostmem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ghostmem PUBLIC 
+    GHOSTMEM_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    GHOSTMEM_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    GHOSTMEM_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+)
 
 # Create shared library
 add_library(ghostmem_shared SHARED ${GHOSTMEM_SOURCES} ${GHOSTMEM_HEADERS})
 target_include_directories(ghostmem_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ghostmem_shared PUBLIC 
+    GHOSTMEM_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    GHOSTMEM_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    GHOSTMEM_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+)
+set_target_properties(ghostmem_shared PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+)
 if(NOT WIN32)
     set_target_properties(ghostmem_shared PROPERTIES OUTPUT_NAME ghostmem)
 endif()
@@ -68,6 +83,7 @@ if(BUILD_TESTS)
         tests/test_compression.cpp
         tests/test_lru.cpp
         tests/test_allocator.cpp
+        tests/test_version.cpp
     )
     
     target_link_libraries(ghostmem_tests ghostmem)
