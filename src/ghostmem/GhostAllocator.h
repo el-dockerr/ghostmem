@@ -1,3 +1,7 @@
+#pragma once
+
+#include "GhostMemoryManager.h"
+
 // A wrapper so std::vector & others use our manager
 template <typename T>
 struct GhostAllocator {
