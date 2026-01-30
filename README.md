@@ -127,7 +127,9 @@ const size_t MAX_PHYSICAL_PAGES = 5;     // Max pages in physical RAM
 
 - **GhostMemoryManager**: Core singleton managing virtual/physical memory mapping
 - **GhostAllocator**: STL-compatible allocator template
-- **VectoredHandler**: Windows exception handler for page fault interception
+- **Platform Handlers**: 
+  - Windows: Vectored exception handler for page fault interception
+  - Linux: SIGSEGV signal handler for page fault interception
 - **LZ4**: High-speed compression library (3rdparty)
 
 ### Memory States
@@ -149,27 +151,100 @@ const size_t MAX_PHYSICAL_PAGES = 5;     // Max pages in physical RAM
 
 ## Requirements
 
-- Windows (uses VirtualAlloc and vectored exception handling)
-- C++11 or later
+### Platform Support
+- ✅ **Windows** (uses VirtualAlloc and vectored exception handling)
+- ✅ **Linux** (uses mmap and SIGSEGV signal handling)
+- 🔄 **macOS** (planned - Mach exceptions)
+
+### Build Requirements
+- C++17 or later
+- CMake 3.10+ (recommended) or direct compiler usage
 - LZ4 library (included in 3rdparty/)
+- **Windows**: MSVC 2017+ or MinGW-w64
+- **Linux**: GCC 7+ or Clang 5+
 
 ## Building
 
-```powershell
-# With MSVC
-cl /EHsc /std:c++17 src/main.cpp src/ghostmem/GhostMemoryManager.cpp src/3rdparty/lz4.c
+### Quick Build (No CMake Required)
+
+#### Windows
+```batch
+# Run from "Developer Command Prompt for VS"
+build-simple.bat
+```
+
+#### Linux
+```bash
+chmod +x build-simple.sh
+./build-simple.sh
+```
+
+### Recommended Build (Using CMake)
+
+#### Windows
+```batch
+# Automatically detects Visual Studio and builds
+build.bat
+
+# Or manually:
+mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
+```
+
+#### Linux
+```bash
+# Automatically builds with optimal settings
+chmod +x build.sh
+./build.sh
+
+# Or manually:
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+### Build Outputs
+
+After building, you'll get:
+
+```
+build/
+├── Release/                    (Windows)
+│   ├── ghostmem.lib           (static library)
+│   ├── ghostmem.dll           (shared library)
+│   └── ghostmem_demo.exe      (demo program)
+│
+└── (Linux)
+    ├── libghostmem.a          (static library)
+    ├── libghostmem.so         (shared library)
+    └── ghostmem_demo          (demo program)
+```
+
+### Running the Demo
+
+**Windows:**
+```batch
+cd build\Release
+ghostmem_demo.exe
+```
+
+**Linux:**
+```bash
+cd build
+./ghostmem_demo
 ```
 
 ## Roadmap
 
 ### 🐧 **Linux & Cross-Platform Support**
-- [ ] Linux implementation using `userfaultfd` for page fault handling
+- ✅ Linux implementation using signal handlers for page fault handling
 - [ ] macOS support using Mach exceptions (if someone dare to spend me a MAC - I would never buy this)
-- [ ] Build scripts for creating shared libraries (DLL/SO)
-  - `build-windows.bat` - Build GhostMem.dll for Windows
-  - `build-linux.sh` - Build libghostmem.so for Linux
-  - CMake configuration for cross-platform builds
-- [ ] Platform abstraction layer for memory management APIs
+- ✅ Build scripts for creating shared libraries (DLL/SO)
+- ✅ `build.bat` / `build.sh` - CMake-based build for Windows/Linux
+- ✅ `build-simple.bat` / `build-simple.sh` - Direct compilation without CMake
+- ✅ CMake configuration for cross-platform builds
+- ✅ Platform abstraction layer for memory management APIs
 - [ ] ARM architecture support for embedded devices
 
 ### 🧪 **Testing & Quality**
@@ -218,7 +293,7 @@ cl /EHsc /std:c++17 src/main.cpp src/ghostmem/GhostMemoryManager.cpp src/3rdpart
 
 ## Limitations & Current Status
 
-- **Current**: Windows-only (VirtualAlloc and vectored exceptions)
+- **Cross-Platform**: Works on Windows and Linux
 - **Current**: Single-threaded, no thread safety
 - **Current**: No proper memory deallocation (PoC focuses on allocation)
 - **Current**: Static configuration (no runtime tuning)

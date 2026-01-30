@@ -1,4 +1,55 @@
+/*******************************************************************************
+ * GhostMem - Virtual RAM through Transparent Compression
+ * 
+ * Copyright (C) 2026 Swen Kalski
+ * 
+ * This file is part of GhostMem.
+ * 
+ * GhostMem is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * GhostMem is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with GhostMem. If not, see <https://www.gnu.org/licenses/>.
+ * 
+ * Contact: kalski.swen@gmail.com
+ ******************************************************************************/
+
+/**
+ * @file GhostMemoryManager.cpp
+ * @brief Core memory management system for transparent RAM compression
+ * 
+ * This file implements the GhostMemoryManager singleton, which provides
+ * virtual memory management with automatic compression and decompression.
+ * The system intercepts page faults to transparently compress inactive
+ * pages and decompress them on access, effectively multiplying available
+ * physical RAM through high-speed LZ4 compression.
+ * 
+ * Key Features:
+ * - Cross-platform support (Windows/Linux)
+ * - LRU-based page eviction policy
+ * - Transparent page fault handling
+ * - In-memory compression (no disk I/O)
+ * - Zero application code changes required
+ * 
+ * @author Swen Kalski
+ * @date 2026
+ */
+
 #include "GhostMemoryManager.h"
+
+#ifdef _WIN32
+// Windows implementation
+#else
+// Linux/POSIX implementation
+#include <cstdio>
+#endif
 
 void GhostMemoryManager::EvictOldestPage(void *ignore_page)
 {
@@ -47,7 +98,16 @@ void GhostMemoryManager::MarkPageAsActive(void *page_start)
 void *GhostMemoryManager::AllocateGhost(size_t size)
 {
     size_t aligned_size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    
+#ifdef _WIN32
     void *ptr = VirtualAlloc(NULL, aligned_size, MEM_RESERVE, PAGE_NOACCESS);
+#else
+    // Reserve address space without allocating physical pages
+    void *ptr = mmap(NULL, aligned_size, PROT_NONE, 
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ptr == MAP_FAILED) ptr = nullptr;
+#endif
+    
     if (ptr)
     {
         managed_blocks[ptr] = aligned_size;
@@ -69,10 +129,17 @@ void GhostMemoryManager::FreezePage(void *page_start)
         backing_store[page_start] = compressed_data; // Store in the vault
 
         // 2. Release RAM (Decommit)
+#ifdef _WIN32
         VirtualFree(page_start, PAGE_SIZE, MEM_DECOMMIT);
+#else
+        // On Linux, we use mprotect to make it inaccessible again
+        mprotect(page_start, PAGE_SIZE, PROT_NONE);
+#endif
     }
 }
 
+#ifdef _WIN32
+// Windows exception handler implementation
 LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionInfo)
 {
     if (pExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
@@ -116,3 +183,68 @@ LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionIn
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+
+#else
+// Linux signal handler implementation
+void GhostMemoryManager::InstallSignalHandler()
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_flags = SA_SIGINFO;
+    sa.sa_sigaction = SignalHandler;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, nullptr);
+}
+
+void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
+{
+    if (sig == SIGSEGV)
+    {
+        void *fault_addr = info->si_addr;
+        auto &manager = Instance();
+
+        // Is it our address?
+        for (const auto &block : manager.managed_blocks)
+        {
+            uintptr_t start = (uintptr_t)block.first;
+            uintptr_t end = start + block.second;
+            uintptr_t fault = (uintptr_t)fault_addr;
+
+            if (fault >= start && fault < end)
+            {
+                void *page_start = (void *)(fault & ~(PAGE_SIZE - 1));
+
+                //[Trap] Access to  page_start
+                // IMPORTANT: Before getting RAM, we must check if we have room!
+                manager.EvictOldestPage(page_start);
+
+                // Now we have room -> get RAM (make page accessible)
+                if (mprotect(page_start, PAGE_SIZE, PROT_READ | PROT_WRITE) == 0)
+                {
+                    // If data was in backup -> Restore
+                    if (manager.backing_store.count(page_start))
+                    {
+                        std::vector<char> &data = manager.backing_store[page_start];
+                        LZ4_decompress_safe(data.data(), (char *)page_start, data.size(), PAGE_SIZE);
+                        manager.backing_store.erase(page_start); // Remove from backup, it's live now
+                    }
+                    else
+                    {
+                        // Zero out new pages
+                        memset(page_start, 0, PAGE_SIZE);
+                    }
+
+                    // Add to active list
+                    manager.MarkPageAsActive(page_start);
+
+                    return; // Continue execution
+                }
+            }
+        }
+    }
+    
+    // Not our fault address - reraise signal for default handling
+    signal(SIGSEGV, SIG_DFL);
+    raise(SIGSEGV);
+}
+#endif
