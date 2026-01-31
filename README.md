@@ -1,11 +1,20 @@
 # GhostMem 👻
 
-**Version 0.9.0**
+**Version 0.10.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
+
+
 [![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml)
 [![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/el-dockerr/actions/workflows/release.yml)
+
+
+
+## Features:
+* Allows to compress memory of a running program just by adding a simple library
+* Allows to use disk as memory - software can literally run without any usage of RAM
+* No feature creep inside
 
 ## 📦 Downloads
 
