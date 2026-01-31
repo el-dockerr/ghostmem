@@ -43,20 +43,219 @@
  */
 
 #include "GhostMemoryManager.h"
+#include <iostream>
+#include <cstring>
 
 #ifdef _WIN32
 // Windows implementation
 #else
 // Linux/POSIX implementation
 #include <cstdio>
+#include <fcntl.h>      // open, O_CREAT, O_RDWR
+#include <sys/stat.h>   // S_IRUSR, S_IWUSR
 #endif
+
+#include "GhostMemoryManager.h"
+#include <iostream>
+#include <cstring>
+
+#ifdef _WIN32
+// Windows implementation
+#else
+// Linux/POSIX implementation
+#include <cstdio>
+#include <fcntl.h>      // open, O_CREAT, O_RDWR
+#include <sys/stat.h>   // S_IRUSR, S_IWUSR
+#endif
+
+// ============================================================================
+// Configuration and Initialization
+// ============================================================================
+
+bool GhostMemoryManager::Initialize(const GhostConfig& config)
+{
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    
+    config_ = config;
+    
+    if (config_.use_disk_backing)
+    {
+        if (!OpenDiskFile())
+        {
+            std::cerr << "[GhostMem] ERROR: Failed to open disk file: " 
+                      << config_.disk_file_path << std::endl;
+            return false;
+        }
+        std::cout << "[GhostMem] Disk backing enabled: " << config_.disk_file_path 
+                  << " (compress=" << (config_.compress_before_disk ? "yes" : "no") << ")" << std::endl;
+    }
+    else
+    {
+        std::cout << "[GhostMem] Using in-memory backing store" << std::endl;
+    }
+    
+    return true;
+}
+
+bool GhostMemoryManager::OpenDiskFile()
+{
+    // Note: Caller must hold mutex_
+    
+#ifdef _WIN32
+    disk_file_handle = CreateFileA(
+        config_.disk_file_path.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,                          // No sharing
+        NULL,
+        CREATE_ALWAYS,              // Always create new file (truncate if exists)
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (disk_file_handle == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+#else
+    disk_file_descriptor = open(
+        config_.disk_file_path.c_str(),
+        O_CREAT | O_RDWR | O_TRUNC,  // Create, read/write, truncate
+        S_IRUSR | S_IWUSR            // User read/write permissions
+    );
+    
+    if (disk_file_descriptor < 0)
+    {
+        return false;
+    }
+#endif
+    
+    disk_next_offset = 0;
+    return true;
+}
+
+void GhostMemoryManager::CloseDiskFile()
+{
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    
+#ifdef _WIN32
+    if (disk_file_handle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(disk_file_handle);
+        disk_file_handle = INVALID_HANDLE_VALUE;
+    }
+#else
+    if (disk_file_descriptor >= 0)
+    {
+        close(disk_file_descriptor);
+        disk_file_descriptor = -1;
+    }
+#endif
+}
+
+bool GhostMemoryManager::WriteToDisk(const void* data, size_t size, size_t& out_offset)
+{
+    // Note: Caller must hold mutex_
+    
+    out_offset = disk_next_offset;
+    
+#ifdef _WIN32
+    DWORD bytes_written = 0;
+    
+    // Seek to the write position
+    LARGE_INTEGER offset;
+    offset.QuadPart = disk_next_offset;
+    if (SetFilePointerEx(disk_file_handle, offset, NULL, FILE_BEGIN) == 0)
+    {
+        return false;
+    }
+    
+    // Write data
+    if (WriteFile(disk_file_handle, data, (DWORD)size, &bytes_written, NULL) == 0)
+    {
+        return false;
+    }
+    
+    if (bytes_written != size)
+    {
+        return false;
+    }
+#else
+    // Seek to the write position
+    if (lseek(disk_file_descriptor, disk_next_offset, SEEK_SET) < 0)
+    {
+        return false;
+    }
+    
+    // Write data
+    ssize_t bytes_written = write(disk_file_descriptor, data, size);
+    if (bytes_written < 0 || (size_t)bytes_written != size)
+    {
+        return false;
+    }
+#endif
+    
+    disk_next_offset += size;
+    return true;
+}
+
+bool GhostMemoryManager::ReadFromDisk(size_t offset, size_t size, void* buffer)
+{
+    // Note: Caller must hold mutex_
+    
+#ifdef _WIN32
+    DWORD bytes_read = 0;
+    
+    // Seek to the read position
+    LARGE_INTEGER file_offset;
+    file_offset.QuadPart = offset;
+    if (SetFilePointerEx(disk_file_handle, file_offset, NULL, FILE_BEGIN) == 0)
+    {
+        return false;
+    }
+    
+    // Read data
+    if (ReadFile(disk_file_handle, buffer, (DWORD)size, &bytes_read, NULL) == 0)
+    {
+        return false;
+    }
+    
+    if (bytes_read != size)
+    {
+        return false;
+    }
+#else
+    // Seek to the read position
+    if (lseek(disk_file_descriptor, offset, SEEK_SET) < 0)
+    {
+        return false;
+    }
+    
+    // Read data
+    ssize_t bytes_read = read(disk_file_descriptor, buffer, size);
+    if (bytes_read < 0 || (size_t)bytes_read != size)
+    {
+        return false;
+    }
+#endif
+    
+    return true;
+}
+
+// ============================================================================
+// Memory Management
+// ============================================================================
 
 void GhostMemoryManager::EvictOldestPage(void *ignore_page)
 {
     // Note: Caller must hold mutex_
     
+    // Determine the effective max pages (config or constant)
+    size_t effective_max = (config_.max_memory_pages > 0) 
+                           ? config_.max_memory_pages 
+                           : MAX_PHYSICAL_PAGES;
+    
     // While we are over the limit...
-    while (active_ram_pages.size() >= MAX_PHYSICAL_PAGES)
+    while (active_ram_pages.size() >= effective_max)
     {
 
         void *victim = active_ram_pages.back();
@@ -126,23 +325,84 @@ void GhostMemoryManager::FreezePage(void *page_start)
 {
     // Note: Caller must hold mutex_
     
-    // 1. Compress
-    int max_dst_size = LZ4_compressBound(PAGE_SIZE);
-    std::vector<char> compressed_data(max_dst_size);
-    int compressed_size = LZ4_compress_default((const char *)page_start, compressed_data.data(), PAGE_SIZE, max_dst_size);
-
-    if (compressed_size > 0)
+    if (config_.use_disk_backing)
     {
-        compressed_data.resize(compressed_size);
-        backing_store[page_start] = compressed_data; // Store in the vault
-
-        // 2. Release RAM (Decommit)
+        // Disk-backed mode
+        if (config_.compress_before_disk)
+        {
+            // Compress before writing to disk
+            int max_dst_size = LZ4_compressBound(PAGE_SIZE);
+            std::vector<char> compressed_data(max_dst_size);
+            int compressed_size = LZ4_compress_default(
+                (const char *)page_start, 
+                compressed_data.data(), 
+                PAGE_SIZE, 
+                max_dst_size
+            );
+            
+            if (compressed_size > 0)
+            {
+                size_t disk_offset = 0;
+                if (WriteToDisk(compressed_data.data(), compressed_size, disk_offset))
+                {
+                    // Track where this page is stored on disk
+                    disk_page_locations[page_start] = {disk_offset, (size_t)compressed_size};
+                }
+                else
+                {
+                    std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                    return;
+                }
+            }
+        }
+        else
+        {
+            // Write raw uncompressed page to disk
+            size_t disk_offset = 0;
+            if (WriteToDisk(page_start, PAGE_SIZE, disk_offset))
+            {
+                disk_page_locations[page_start] = {disk_offset, PAGE_SIZE};
+            }
+            else
+            {
+                std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                return;
+            }
+        }
+        
+        // Release RAM (Decommit)
 #ifdef _WIN32
         VirtualFree(page_start, PAGE_SIZE, MEM_DECOMMIT);
 #else
-        // On Linux, we use mprotect to make it inaccessible again
         mprotect(page_start, PAGE_SIZE, PROT_NONE);
 #endif
+    }
+    else
+    {
+        // In-memory backing mode (original behavior)
+        // 1. Compress
+        int max_dst_size = LZ4_compressBound(PAGE_SIZE);
+        std::vector<char> compressed_data(max_dst_size);
+        int compressed_size = LZ4_compress_default(
+            (const char *)page_start, 
+            compressed_data.data(), 
+            PAGE_SIZE, 
+            max_dst_size
+        );
+
+        if (compressed_size > 0)
+        {
+            compressed_data.resize(compressed_size);
+            backing_store[page_start] = compressed_data; // Store in the vault
+
+            // 2. Release RAM (Decommit)
+#ifdef _WIN32
+            VirtualFree(page_start, PAGE_SIZE, MEM_DECOMMIT);
+#else
+            // On Linux, we use mprotect to make it inaccessible again
+            mprotect(page_start, PAGE_SIZE, PROT_NONE);
+#endif
+        }
     }
 }
 
@@ -175,13 +435,45 @@ LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionIn
                 // Now we have room -> get RAM
                 if (VirtualAlloc(page_start, PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
                 {
-
                     // If data was in backup -> Restore
-                    if (manager.backing_store.count(page_start))
+                    if (manager.config_.use_disk_backing)
                     {
-                        std::vector<char> &data = manager.backing_store[page_start];
-                        LZ4_decompress_safe(data.data(), (char *)page_start, data.size(), PAGE_SIZE);
-                        manager.backing_store.erase(page_start); // Remove from backup, it's live now
+                        // Restore from disk
+                        auto it = manager.disk_page_locations.find(page_start);
+                        if (it != manager.disk_page_locations.end())
+                        {
+                            size_t disk_offset = it->second.first;
+                            size_t data_size = it->second.second;
+                            
+                            if (manager.config_.compress_before_disk)
+                            {
+                                // Read compressed data and decompress
+                                std::vector<char> compressed_data(data_size);
+                                if (manager.ReadFromDisk(disk_offset, data_size, compressed_data.data()))
+                                {
+                                    LZ4_decompress_safe(compressed_data.data(), (char *)page_start, 
+                                                       data_size, PAGE_SIZE);
+                                }
+                            }
+                            else
+                            {
+                                // Read raw uncompressed data
+                                manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_start);
+                            }
+                            
+                            // Note: We keep disk_page_locations entry (don't erase)
+                            // in case page gets evicted again
+                        }
+                    }
+                    else
+                    {
+                        // Restore from in-memory backing store
+                        if (manager.backing_store.count(page_start))
+                        {
+                            std::vector<char> &data = manager.backing_store[page_start];
+                            LZ4_decompress_safe(data.data(), (char *)page_start, data.size(), PAGE_SIZE);
+                            manager.backing_store.erase(page_start); // Remove from backup, it's live now
+                        }
                     }
 
                     // Add to active list
@@ -239,16 +531,54 @@ void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
                 if (mprotect(page_start, PAGE_SIZE, PROT_READ | PROT_WRITE) == 0)
                 {
                     // If data was in backup -> Restore
-                    if (manager.backing_store.count(page_start))
+                    if (manager.config_.use_disk_backing)
                     {
-                        std::vector<char> &data = manager.backing_store[page_start];
-                        LZ4_decompress_safe(data.data(), (char *)page_start, data.size(), PAGE_SIZE);
-                        manager.backing_store.erase(page_start); // Remove from backup, it's live now
+                        // Restore from disk
+                        auto it = manager.disk_page_locations.find(page_start);
+                        if (it != manager.disk_page_locations.end())
+                        {
+                            size_t disk_offset = it->second.first;
+                            size_t data_size = it->second.second;
+                            
+                            if (manager.config_.compress_before_disk)
+                            {
+                                // Read compressed data and decompress
+                                std::vector<char> compressed_data(data_size);
+                                if (manager.ReadFromDisk(disk_offset, data_size, compressed_data.data()))
+                                {
+                                    LZ4_decompress_safe(compressed_data.data(), (char *)page_start, 
+                                                       data_size, PAGE_SIZE);
+                                }
+                            }
+                            else
+                            {
+                                // Read raw uncompressed data
+                                manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_start);
+                            }
+                            
+                            // Note: We keep disk_page_locations entry (don't erase)
+                            // in case page gets evicted again
+                        }
+                        else
+                        {
+                            // Zero out new pages
+                            memset(page_start, 0, PAGE_SIZE);
+                        }
                     }
                     else
                     {
-                        // Zero out new pages
-                        memset(page_start, 0, PAGE_SIZE);
+                        // Restore from in-memory backing store
+                        if (manager.backing_store.count(page_start))
+                        {
+                            std::vector<char> &data = manager.backing_store[page_start];
+                            LZ4_decompress_safe(data.data(), (char *)page_start, data.size(), PAGE_SIZE);
+                            manager.backing_store.erase(page_start); // Remove from backup, it's live now
+                        }
+                        else
+                        {
+                            // Zero out new pages
+                            memset(page_start, 0, PAGE_SIZE);
+                        }
                     }
 
                     // Add to active list

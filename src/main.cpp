@@ -14,6 +14,22 @@ int main() {
     std::cout << "Virtual RAM through Transparent Compression\n";
     std::cout << "===========================================\n\n";
     
+    // --- Optional: Configure disk-backed storage ---
+    // Uncomment the following lines to enable disk-backed storage:
+    /*
+    GhostConfig config;
+    config.use_disk_backing = true;
+    config.disk_file_path = "ghostmem_demo.swap";
+    config.compress_before_disk = true;
+    config.max_memory_pages = 5;  // Override default
+    
+    if (!GhostMemoryManager::Instance().Initialize(config)) {
+        std::cerr << "Failed to initialize GhostMem with disk backing\n";
+        return 1;
+    }
+    std::cout << "Disk-backed mode enabled!\n\n";
+    */
+    
     std::cout << "--- GhostRAM with C++ Containers ---\n\n";
 
     // We create a vector that uses our allocator.
