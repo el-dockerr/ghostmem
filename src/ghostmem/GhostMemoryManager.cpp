@@ -99,10 +99,10 @@ void GhostMemoryManager::MarkPageAsActive(void *page_start)
     active_ram_pages.push_front(page_start);
 }
 
-void td::lock_guard<std::recursive_mutex> lock(mutex_);
-    
-    s*GhostMemoryManager::AllocateGhost(size_t size)
+void *GhostMemoryManager::AllocateGhost(size_t size)
 {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    
     size_t aligned_size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     
 #ifdef _WIN32
@@ -122,10 +122,10 @@ void td::lock_guard<std::recursive_mutex> lock(mutex_);
     return ptr;
 }
 
-void GhNote: Caller must hold mutex_
-    
-    // ostMemoryManager::FreezePage(void *page_start)
+void GhostMemoryManager::FreezePage(void *page_start)
 {
+    // Note: Caller must hold mutex_
+    
     // 1. Compress
     int max_dst_size = LZ4_compressBound(PAGE_SIZE);
     std::vector<char> compressed_data(max_dst_size);
@@ -150,13 +150,13 @@ void GhNote: Caller must hold mutex_
 // Windows exception handler implementation
 LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionInfo)
 {
-        
-        // Lock mutex for thread-safe access to shared data structures
-        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
     if (pExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
     {
         ULONG_PTR fault_addr = pExceptionInfo->ExceptionRecord->ExceptionInformation[1];
         auto &manager = Instance();
+        
+        // Lock mutex for thread-safe access to shared data structures
+        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
 
         // Is it our address?
         for (const auto &block : manager.managed_blocks)
