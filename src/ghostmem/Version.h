@@ -38,11 +38,11 @@
 
 // Version numbers
 #define GHOSTMEM_VERSION_MAJOR 0
-#define GHOSTMEM_VERSION_MINOR 9
+#define GHOSTMEM_VERSION_MINOR 10
 #define GHOSTMEM_VERSION_PATCH 0
 
 // Version string
-#define GHOSTMEM_VERSION_STRING "0.9.0"
+#define GHOSTMEM_VERSION_STRING "0.10.0"
 
 // Namespace for version info
 namespace GhostMem {

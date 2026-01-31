@@ -60,6 +60,7 @@
 #include <list>                 // LRU page list
 #include <algorithm>            // Standard algorithms
 #include <mutex>                // Thread synchronization
+#include <string>               // String for disk file paths
 
 // Third-party includes
 #include "../3rdparty/lz4.h"    // LZ4 compression/decompression
