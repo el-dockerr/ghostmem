@@ -4,8 +4,8 @@
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
-[![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml)
-[![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml)
+[![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml)
+[![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/el-dockerr/actions/workflows/release.yml)
 
 ## 📦 Downloads
 
@@ -291,14 +291,18 @@ cd build
 - ✅ CI/CD pipeline (GitHub Actions)
 
 ### 📚 **Documentation**
-- [ ] API Reference documentation
+- ✅ API Reference documentation → **[docs/API_REFERENCE.md](docs/API_REFERENCE.md)**
   - Detailed function/class documentation
   - Memory lifecycle diagrams
   - Thread safety guarantees
-- [ ] Integration guides
+- ✅ Integration guides → **[docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md)**
   - Using GhostMem as a DLL/SO
   - Custom allocator examples
   - Configuration best practices
+- ✅ Thread safety documentation → **[docs/THREAD_SAFETY.md](docs/THREAD_SAFETY.md)**
+  - Multi-threading guarantees and patterns
+  - Performance in concurrent scenarios
+  - Platform-specific considerations
 - [ ] Performance tuning guide
   - Choosing optimal `MAX_PHYSICAL_PAGES`
   - Workload-specific configurations
