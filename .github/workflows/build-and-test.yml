@@ -43,15 +43,17 @@ jobs:
       
     - name: Run Tests (Linux)
       if: runner.os == 'Linux'
+      timeout-minutes: 10
       run: |
         cd build
-        ctest --output-on-failure --build-config ${{ matrix.build_type }}
+        ctest --output-on-failure --build-config ${{ matrix.build_type }} --timeout 300
       
     - name: Run Tests (Windows)
       if: runner.os == 'Windows'
+      timeout-minutes: 10
       run: |
         cd build
-        ctest -C ${{ matrix.build_type }} --output-on-failure
+        ctest -C ${{ matrix.build_type }} --output-on-failure --timeout 300
       
     - name: Test Demo Executable (Linux/macOS)
       if: runner.os != 'Windows'

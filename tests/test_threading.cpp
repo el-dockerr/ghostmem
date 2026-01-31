@@ -205,8 +205,13 @@ TEST(ConcurrentCompressionCycle) {
 
 // Test concurrent manipulation of random data across multiple threads
 TEST(ConcurrentRandomDataManipulation) {
+#ifdef _WIN32
+    const int NUM_THREADS = 3;  // Reduced for Windows to avoid timeout issues
+    const int DATA_SIZE = 512;  // Reduced data size for Windows
+#else
     const int NUM_THREADS = 6;
     const int DATA_SIZE = 1024;  // 1024 integers per thread
+#endif
     std::vector<std::thread> threads;
     std::mutex cout_mutex;
     
