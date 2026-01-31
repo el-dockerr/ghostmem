@@ -85,6 +85,7 @@ if(BUILD_TESTS)
         tests/test_allocator.cpp
         tests/test_version.cpp
         tests/test_threading.cpp
+        tests/test_disk_backing.cpp
     )
     
     target_link_libraries(ghostmem_tests ghostmem)
