@@ -206,12 +206,6 @@ void GhostMemoryManager::InstallSignalHandler()
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSEGV, &sa, nullptr);
 }
-        
-        // Lock mutex for thread-safe access to shared data structures
-        // Note: While mutexes aren't technically async-signal-safe,
-        // this works in practice since the manager is initialized in main
-        // and page faults are handled per-thread by the kernel.
-        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
 
 void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
 {
@@ -219,6 +213,12 @@ void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
     {
         void *fault_addr = info->si_addr;
         auto &manager = Instance();
+        
+        // Lock mutex for thread-safe access to shared data structures
+        // Note: While mutexes aren't technically async-signal-safe,
+        // this works in practice since the manager is initialized in main
+        // and page faults are handled per-thread by the kernel.
+        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
 
         // Is it our address?
         for (const auto &block : manager.managed_blocks)
