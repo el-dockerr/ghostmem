@@ -88,17 +88,18 @@ jobs:
         New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/include
         New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/bin
         
+        # Ninja generator puts files in build/, not build/Release/
         # Copy DLL (no .lib import library is generated currently)
-        Copy-Item build/Release/ghostmem_shared.dll release/ghostmem-${{ matrix.artifact_name }}/lib/
+        Copy-Item build/ghostmem_shared.dll release/ghostmem-${{ matrix.artifact_name }}/lib/
         
         # Copy static library
-        Copy-Item build/Release/ghostmem.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
+        Copy-Item build/ghostmem.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
         
         # Copy header files
         Copy-Item src/ghostmem/*.h release/ghostmem-${{ matrix.artifact_name }}/include/
         
         # Copy demo executable
-        Copy-Item build/Release/ghostmem_demo.exe release/ghostmem-${{ matrix.artifact_name }}/bin/
+        Copy-Item build/ghostmem_demo.exe release/ghostmem-${{ matrix.artifact_name }}/bin/
         
         # Copy README
         Copy-Item README.md release/ghostmem-${{ matrix.artifact_name }}/
