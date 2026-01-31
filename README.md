@@ -61,7 +61,7 @@ This is the practical realization of the scam "DoubleRAM" concept from the 90's,
 │  ┌──────────────┐      ┌──────────────┐             │
 │  │ Physical RAM │      │  Compressed  │             │
 │  │ (5 pages max)│◄────►│ Backing Store│             │
-│  │   Active     │ LZ4  │  (in-memory) │             │
+│  │   Active     │ LZ4  │(RAM or Disk) │             │
 │  └──────────────┘      └──────────────┘             │
 │         ▲                                           │
 │         │ Page Fault Handler (Vectored Exception)   │
@@ -75,19 +75,45 @@ This is the practical realization of the scam "DoubleRAM" concept from the 90's,
 1. **Virtual Memory Reservation**: Pages are reserved but not committed (no RAM used initially)
 2. **Page Fault Interception**: Vectored exception handler catches access violations
 3. **LRU Eviction**: When physical page limit is reached, least recently used page is evicted
-4. **LZ4 Compression**: Evicted pages are compressed and stored in process memory
+4. **LZ4 Compression**: Evicted pages are compressed and stored in-memory or on disk
 5. **Transparent Restoration**: On next access, page is decompressed and restored instantly
+6. **Configurable Backing**: Choose between in-memory (default) or disk-backed storage
+
+### Storage Modes
+
+**In-Memory Mode (Default)**
+- Compressed pages stored in process memory
+- Fastest performance (microsecond latency)
+- No disk I/O required
+- Best for: Desktop applications, sufficient RAM
+
+**Disk-Backed Mode (Optional)**
+- Compressed pages written to disk file
+- Minimal memory footprint
+- Configurable compression
+- Best for: IoT devices, memory-constrained systems, batch processing
+
+```cpp
+// Enable disk-backed storage
+GhostConfig config;
+config.use_disk_backing = true;
+config.disk_file_path = "ghostmem.swap";
+config.compress_before_disk = true;
+config.max_memory_pages = 256;  // 1MB RAM limit
+
+GhostMemoryManager::Instance().Initialize(config);
+```
 
 ## Advantages Over Traditional Swapping
 
 ### 🚀 **Speed**
-- **No Disk I/O**: Everything happens in RAM (even compressed data)
+- **In-Memory Mode**: Everything happens in RAM (even compressed data)
 - **LZ4 is Fast**: Compression/decompression runs at GB/s speeds
-- **Low Latency**: Microseconds vs milliseconds for disk swaps
+- **Low Latency**: Microseconds (in-memory) or sub-milliseconds (SSD-backed)
 
 ### 💾 **Efficiency**
 - **High Compression Ratios**: Typical data compresses 2-10x (especially text, AI model weights)
-- **No Disk Space Required**: Perfect for IoT devices without storage
+- **Flexible Storage**: Choose in-memory or disk-backed based on constraints
 - **Reduced Memory Footprint**: 10 pages of virtual memory can fit in 2 pages of physical RAM
 
 ### 🔒 **Transparency**
@@ -96,7 +122,7 @@ This is the practical realization of the scam "DoubleRAM" concept from the 90's,
 - **STL Compatible**: Drop-in `GhostAllocator` for any STL container
 
 ### ⚡ **IoT & AI Optimized**
-- **Embedded Friendly**: No filesystem dependencies
+- **Embedded Friendly**: Optional disk backing for extreme memory constraints
 - **Predictable Performance**: No kernel swap subsystem interference  
 - **AI Model Inference**: Keep model weights compressed until needed
 - **Edge Devices**: Run larger models on memory-constrained hardware
@@ -273,7 +299,7 @@ cd build
 - ✅ `build-simple.bat` / `build-simple.sh` - Direct compilation without CMake
 - ✅ CMake configuration for cross-platform builds
 - ✅ Platform abstraction layer for memory management APIs
-- [ ] ARM architecture support for embedded devices
+- ✅ ARM architecture support for embedded devices
 
 ### 🧪 **Testing & Quality**
 - ✅ Unit tests for core components

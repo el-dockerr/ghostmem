@@ -547,7 +547,78 @@ private:
 
 ## Configuration Best Practices
 
-### 1. Tuning MAX_PHYSICAL_PAGES
+### 1. Disk-Backed Storage Mode
+
+**When to use disk backing:**
+- ✅ Extremely memory-constrained systems (< 64MB RAM)
+- ✅ Large datasets that compress well (text, structured data)
+- ✅ Fast storage available (SSD/NVMe)
+- ✅ Acceptable I/O latency for your workload
+
+**When to use in-memory mode (default):**
+- ✅ Sufficient RAM available (> 128MB)
+- ✅ Performance-critical applications
+- ✅ Random access patterns
+- ✅ Incompressible data (already compressed, encrypted, random)
+
+**Example configurations:**
+
+```cpp
+// Disk-backed mode for memory-constrained IoT device
+GhostConfig config;
+config.use_disk_backing = true;
+config.disk_file_path = "/tmp/ghostmem.swap";
+config.compress_before_disk = true;
+config.max_memory_pages = 32;  // Only 128KB RAM for pages
+
+if (!GhostMemoryManager::Instance().Initialize(config)) {
+    // Handle error
+}
+```
+
+```cpp
+// In-memory mode for desktop application (default)
+// No configuration needed, or:
+GhostConfig config;
+config.use_disk_backing = false;
+config.max_memory_pages = 2048;  // 8MB RAM for pages
+
+GhostMemoryManager::Instance().Initialize(config);
+```
+
+```cpp
+// Fast disk mode (SSD) without compression
+GhostConfig config;
+config.use_disk_backing = true;
+config.disk_file_path = "ghostmem.swap";
+config.compress_before_disk = false;  // Skip compression for faster I/O
+config.max_memory_pages = 128;  // 512KB RAM
+
+GhostMemoryManager::Instance().Initialize(config);
+```
+
+**Performance comparison:**
+
+| Configuration | Memory Usage | Speed | Best For |
+|---------------|--------------|-------|----------|
+| In-memory (default) | High | Fastest (µs latency) | Desktop apps, gaming, real-time |
+| Disk + compression | Lowest | Slow (ms latency) | IoT, embedded, batch processing |
+| Disk + no compression | Medium | Medium (sub-ms) | SSD systems, CPU-bound workloads |
+
+---
+
+### 2. Tuning MAX_PHYSICAL_PAGES
+
+You can configure the page limit either by:
+
+**Option A: Using GhostConfig (recommended)**
+```cpp
+GhostConfig config;
+config.max_memory_pages = 256;  // 1MB RAM
+GhostMemoryManager::Instance().Initialize(config);
+```
+
+**Option B: Editing the constant (requires recompilation)**
 
 Edit `src/ghostmem/GhostMemoryManager.h`:
 
@@ -587,11 +658,11 @@ auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
 std::cout << "Time: " << duration << "ms" << std::endl;
 ```
 
-Test with different `MAX_PHYSICAL_PAGES` values to find optimal setting.
+Test with different `max_memory_pages` values to find optimal setting.
 
 ---
 
-### 2. Access Patterns
+### 3. Access Patterns
 
 **✅ Good: Sequential access**
 ```cpp
@@ -614,7 +685,7 @@ for (int i = 0; i < 1000000; i++) {
 
 ---
 
-### 3. Data Organization
+### 4. Data Organization
 
 **✅ Good: Group related data**
 ```cpp

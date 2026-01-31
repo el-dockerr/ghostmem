@@ -87,6 +87,59 @@ const size_t PAGE_SIZE = 4096;
 const size_t MAX_PHYSICAL_PAGES = 5;
 
 /**
+ * @struct GhostConfig
+ * @brief Configuration structure for GhostMemoryManager
+ * 
+ * This structure allows customization of GhostMem behavior, including
+ * optional disk-backed storage for compressed pages.
+ */
+struct GhostConfig
+{
+    /**
+     * @brief Enable disk-backed storage instead of in-memory backing store
+     * 
+     * When true, compressed pages are written to disk instead of kept in RAM.
+     * This reduces memory footprint at the cost of disk I/O latency.
+     * 
+     * Default: false (in-memory compression)
+     */
+    bool use_disk_backing = false;
+
+    /**
+     * @brief Path to the disk file for storing compressed pages
+     * 
+     * Only used when use_disk_backing is true. The file is created if it
+     * doesn't exist and truncated if it does. Relative paths are relative
+     * to the working directory.
+     * 
+     * Example: "ghostmem_swap.dat" or "/tmp/ghostmem.swap"
+     * Default: "ghostmem.swap"
+     */
+    std::string disk_file_path = "ghostmem.swap";
+
+    /**
+     * @brief Maximum number of physical pages in RAM
+     * 
+     * Overrides the MAX_PHYSICAL_PAGES constant when set to a non-zero value.
+     * When limit is reached, least recently used pages are evicted.
+     * 
+     * Default: 0 (uses MAX_PHYSICAL_PAGES constant)
+     */
+    size_t max_memory_pages = 0;
+
+    /**
+     * @brief Compress page data before writing to disk
+     * 
+     * When true (default), pages are LZ4-compressed before disk writes.
+     * When false, raw uncompressed pages are written (faster but larger).
+     * Only applies when use_disk_backing is true.
+     * 
+     * Default: true (compress before disk write)
+     */
+    bool compress_before_disk = true;
+};
+
+/**
  * @class GhostMemoryManager
  * @brief Singleton class managing virtual memory with transparent compression
  * 
@@ -110,12 +163,20 @@ class GhostMemoryManager
 {
 private:
     /**
+     * @brief Configuration for the memory manager
+     */
+    GhostConfig config_;
+
+    /**
      * @brief Mutex protecting all shared data structures
      * 
      * This mutex must be locked when accessing or modifying:
      * - managed_blocks
      * - backing_store
      * - active_ram_pages
+     * - config_
+     * - disk_file_handle / disk_file_descriptor
+     * - disk_page_locations
      * 
      * Note: Uses std::recursive_mutex to allow re-entrant locking
      * within the same thread (e.g., page fault during eviction).
@@ -135,7 +196,7 @@ private:
     std::map<void *, size_t> managed_blocks;
 
     /**
-     * @brief Storage for compressed page data
+     * @brief Storage for compressed page data (in-memory mode)
      * 
      * Key: Page base address (page-aligned)
      * Value: Vector containing LZ4-compressed page data
@@ -145,8 +206,47 @@ private:
      * - Text/strings: 5-10x compression
      * - Repeated data: 10-50x compression
      * - Random data: ~1x (incompressible)
+     * 
+     * Note: Not used when disk backing is enabled (use_disk_backing=true)
      */
     std::map<void *, std::vector<char>> backing_store;
+
+    /**
+     * @brief Disk page location tracking (disk-backed mode)
+     * 
+     * Key: Page base address
+     * Value: Pair of (file_offset, data_size)
+     * 
+     * Tracks where each compressed page is stored on disk and its size.
+     * Only used when config_.use_disk_backing is true.
+     */
+    std::map<void *, std::pair<size_t, size_t>> disk_page_locations;
+
+#ifdef _WIN32
+    /**
+     * @brief Windows file handle for disk backing
+     * 
+     * Valid only when config_.use_disk_backing is true.
+     * INVALID_HANDLE_VALUE when not using disk backing.
+     */
+    HANDLE disk_file_handle = INVALID_HANDLE_VALUE;
+#else
+    /**
+     * @brief POSIX file descriptor for disk backing
+     * 
+     * Valid only when config_.use_disk_backing is true.
+     * -1 when not using disk backing.
+     */
+    int disk_file_descriptor = -1;
+#endif
+
+    /**
+     * @brief Next available file offset for disk writes
+     * 
+     * Tracks the end of the disk file to append new compressed pages.
+     * Only used when config_.use_disk_backing is true.
+     */
+    size_t disk_next_offset = 0;
 
     /**
      * @brief LRU list of pages currently in physical RAM
@@ -203,6 +303,41 @@ private:
      */
     void MarkPageAsActive(void *page_start);
 
+    /**
+     * @brief Opens the disk file for page storage
+     * 
+     * Creates or truncates the file specified in config_.disk_file_path.
+     * Sets up disk_file_handle/disk_file_descriptor for subsequent I/O.
+     * 
+     * @return true on success, false on failure
+     */
+    bool OpenDiskFile();
+
+    /**
+     * @brief Closes the disk file and cleans up resources
+     */
+    void CloseDiskFile();
+
+    /**
+     * @brief Writes compressed data to disk file
+     * 
+     * @param data Pointer to data to write
+     * @param size Number of bytes to write
+     * @param out_offset Receives the file offset where data was written
+     * @return true on success, false on I/O error
+     */
+    bool WriteToDisk(const void* data, size_t size, size_t& out_offset);
+
+    /**
+     * @brief Reads compressed data from disk file
+     * 
+     * @param offset File offset to read from
+     * @param size Number of bytes to read
+     * @param buffer Buffer to read into (must be at least size bytes)
+     * @return true on success, false on I/O error
+     */
+    bool ReadFromDisk(size_t offset, size_t size, void* buffer);
+
 public:
     /**
      * @brief Gets the singleton instance of GhostMemoryManager
@@ -216,6 +351,41 @@ public:
         static GhostMemoryManager instance;
         return instance;
     }
+
+    /**
+     * @brief Destructor - cleans up disk file if using disk backing
+     */
+    ~GhostMemoryManager()
+    {
+        CloseDiskFile();
+    }
+
+    /**
+     * @brief Initializes the memory manager with custom configuration
+     * 
+     * Must be called before any AllocateGhost calls to configure disk
+     * backing and other settings. If not called, default configuration
+     * (in-memory backing) is used.
+     * 
+     * @param config Configuration structure with desired settings
+     * @return true on success, false if disk file cannot be opened
+     * 
+     * @note This method is NOT thread-safe during first call. Call it
+     *       from the main thread before spawning worker threads.
+     * 
+     * Example:
+     * @code
+     * GhostConfig config;
+     * config.use_disk_backing = true;
+     * config.disk_file_path = "myapp_ghost.swap";
+     * config.max_memory_pages = 256; // 1MB RAM limit
+     * 
+     * if (!GhostMemoryManager::Instance().Initialize(config)) {
+     *     // Handle error
+     * }
+     * @endcode
+     */
+    bool Initialize(const GhostConfig& config);
 
     /**
      * @brief Allocates virtual memory managed by GhostMem

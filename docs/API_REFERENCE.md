@@ -4,6 +4,8 @@
 - [Core Classes](#core-classes)
   - [GhostMemoryManager](#ghostmemorymanager)
   - [GhostAllocator](#ghostallocator)
+- [Configuration](#configuration)
+  - [GhostConfig Structure](#ghostconfig-structure)
 - [Memory States](#memory-states)
 - [Configuration Constants](#configuration-constants)
 - [Version Information](#version-information)
@@ -16,7 +18,7 @@
 
 **Header:** `ghostmem/GhostMemoryManager.h`
 
-The central singleton class that manages virtual memory allocation, page fault handling, compression/decompression, and LRU eviction.
+The central singleton class that manages virtual memory allocation, page fault handling, compression/decompression, and LRU eviction. Supports both in-memory compression and optional disk-backed storage modes.
 
 #### Public Methods
 
@@ -31,6 +33,43 @@ Gets the singleton instance of GhostMemoryManager.
 ```cpp
 auto& manager = GhostMemoryManager::Instance();
 ```
+
+---
+
+##### `bool Initialize(const GhostConfig& config)`
+Initializes the memory manager with custom configuration.
+
+**Parameters:**
+- `config`: Configuration structure with settings for disk backing, page limits, etc.
+
+**Returns:** 
+- `true` on success
+- `false` if disk file cannot be opened (when disk backing is enabled)
+
+**Thread Safety:** ⚠️ **NOT thread-safe during initialization**. Must be called from the main thread before spawning worker threads and before any `AllocateGhost()` calls.
+
+**Behavior:**
+1. Stores the configuration settings
+2. If `config.use_disk_backing` is true, opens the disk file
+3. Prints initialization status to stdout
+
+**Example:**
+```cpp
+GhostConfig config;
+config.use_disk_backing = true;
+config.disk_file_path = "myapp_ghost.swap";
+config.compress_before_disk = true;
+config.max_memory_pages = 256;  // 1MB physical RAM limit
+
+if (!GhostMemoryManager::Instance().Initialize(config)) {
+    std::cerr << "Failed to initialize GhostMem" << std::endl;
+    return 1;
+}
+```
+
+**Notes:**
+- If `Initialize()` is not called, default configuration is used (in-memory backing, 5 pages)
+- Calling `Initialize()` multiple times is not recommended
 
 ---
 
@@ -320,6 +359,129 @@ map[1] = "one";
 std::list<double, GhostAllocator<double>> list;
 list.push_back(3.14);
 ```
+
+---
+
+## Configuration
+
+### GhostConfig Structure
+
+**Header:** `ghostmem/GhostMemoryManager.h`
+
+Configuration structure for customizing GhostMemoryManager behavior, including optional disk-backed storage for compressed pages.
+
+#### Fields
+
+##### `bool use_disk_backing`
+Enable disk-backed storage instead of in-memory backing store.
+
+**Default:** `false` (in-memory compression)
+
+**Behavior:**
+- When `true`: Compressed pages are written to disk
+- When `false`: Compressed pages remain in process memory
+- Disk backing reduces memory footprint at the cost of I/O latency
+
+**Example:**
+```cpp
+GhostConfig config;
+config.use_disk_backing = true;  // Enable disk backing
+```
+
+---
+
+##### `std::string disk_file_path`
+Path to the disk file for storing compressed pages.
+
+**Default:** `"ghostmem.swap"`
+
+**Behavior:**
+- Only used when `use_disk_backing` is `true`
+- File is created if it doesn't exist, truncated if it does
+- Relative paths are relative to working directory
+- Automatically deleted on clean shutdown
+
+**Examples:**
+```cpp
+config.disk_file_path = "ghostmem_swap.dat";           // Current directory
+config.disk_file_path = "/tmp/myapp_ghost.swap";       // Linux absolute path
+config.disk_file_path = "C:\\Temp\\ghostmem.swap";     // Windows absolute path
+```
+
+---
+
+##### `size_t max_memory_pages`
+Maximum number of physical pages allowed in RAM.
+
+**Default:** `0` (uses `MAX_PHYSICAL_PAGES` constant = 5)
+
+**Behavior:**
+- When set to non-zero, overrides the `MAX_PHYSICAL_PAGES` constant
+- When limit is reached, least recently used pages are evicted
+- Each page is 4096 bytes (4KB)
+
+**Example calculations:**
+```cpp
+config.max_memory_pages = 256;     // 256 * 4KB = 1MB RAM limit
+config.max_memory_pages = 1024;    // 1024 * 4KB = 4MB RAM limit
+config.max_memory_pages = 262144;  // 262144 * 4KB = 1GB RAM limit
+```
+
+---
+
+##### `bool compress_before_disk`
+Compress page data before writing to disk.
+
+**Default:** `true` (compress before disk write)
+
+**Behavior:**
+- Only applies when `use_disk_backing` is `true`
+- When `true`: LZ4 compression applied before disk writes (smaller file, slower)
+- When `false`: Raw uncompressed pages written (larger file, faster)
+- Typical compression ratios: 2-10x for text/structured data
+
+**Example:**
+```cpp
+config.compress_before_disk = true;   // Compress (recommended)
+config.compress_before_disk = false;  // No compression (faster I/O)
+```
+
+---
+
+#### Complete Configuration Example
+
+```cpp
+#include "ghostmem/GhostMemoryManager.h"
+
+int main() {
+    // Configure disk-backed storage with 1MB RAM limit
+    GhostConfig config;
+    config.use_disk_backing = true;
+    config.disk_file_path = "myapp_ghost.swap";
+    config.compress_before_disk = true;
+    config.max_memory_pages = 256;  // 1MB physical RAM
+    
+    // Initialize before any allocations
+    if (!GhostMemoryManager::Instance().Initialize(config)) {
+        std::cerr << "Failed to initialize GhostMem" << std::endl;
+        return 1;
+    }
+    
+    // Now use GhostAllocator normally...
+    std::vector<int, GhostAllocator<int>> vec;
+    // ...
+}
+```
+
+---
+
+#### Configuration Modes Comparison
+
+| Mode | Memory Usage | Speed | Disk I/O | Use Case |
+|------|--------------|-------|----------|----------|
+| **In-Memory** (`use_disk_backing=false`) | Higher | Fastest | None | Default, sufficient RAM available |
+| **Disk + Compression** (`use_disk_backing=true`, `compress_before_disk=true`) | Lowest | Slower | Read/Write | Memory-constrained systems |
+| **Disk + No Compression** (`use_disk_backing=true`, `compress_before_disk=false`) | Low | Medium | Read/Write | Fast storage (SSD), CPU-constrained |
 
 ---
 
