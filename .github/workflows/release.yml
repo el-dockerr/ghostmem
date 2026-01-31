@@ -60,8 +60,8 @@ jobs:
         mkdir -p release/ghostmem-${{ matrix.artifact_name }}/include
         mkdir -p release/ghostmem-${{ matrix.artifact_name }}/bin
         
-        # Copy shared library
-        cp build/libghostmem_shared.so release/ghostmem-${{ matrix.artifact_name }}/lib/
+        # Copy shared library (libghostmem.so per CMakeLists.txt line 42)
+        cp build/libghostmem.so* release/ghostmem-${{ matrix.artifact_name }}/lib/ 2>/dev/null || true
         
         # Copy static library
         cp build/libghostmem.a release/ghostmem-${{ matrix.artifact_name }}/lib/
@@ -88,9 +88,10 @@ jobs:
         New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/include
         New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/bin
         
-        # Copy DLL and LIB files
+        # Copy DLL (no .lib import library is generated currently)
         Copy-Item build/Release/ghostmem_shared.dll release/ghostmem-${{ matrix.artifact_name }}/lib/
-        Copy-Item build/Release/ghostmem_shared.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
+        
+        # Copy static library
         Copy-Item build/Release/ghostmem.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
         
         # Copy header files
