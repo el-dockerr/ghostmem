@@ -4,6 +4,32 @@
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
+[![Build and Test](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml)
+[![Release](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml)
+
+## 📦 Downloads
+
+Pre-built binaries are available from the [Releases page](https://github.com/YOUR_USERNAME/GhostMem/releases).
+
+**Latest Release:**
+- **Windows (x64)**: `ghostmem-windows-x64.zip` - Includes DLL, static library, headers, and demo
+- **Linux (x64)**: `ghostmem-linux-x64.tar.gz` - Includes SO, static library, headers, and demo
+
+Each release package contains:
+```
+ghostmem-{platform}/
+├── lib/
+│   ├── ghostmem_shared.{dll|so}  # Shared library
+│   └── ghostmem.{lib|a}          # Static library
+├── include/
+│   ├── GhostMemoryManager.h
+│   ├── GhostAllocator.h
+│   └── Version.h
+├── bin/
+│   └── ghostmem_demo             # Demo application
+└── README.md
+```
+
 ## Overview
 
 ### The Memory Crisis
@@ -320,6 +346,52 @@ Real-world data compression with LZ4:
 - **Random data**: 1x (no compression, but no harm)
 
 Even with conservative 2x compression, you effectively **double your usable RAM**.
+
+## 🚀 Creating a Release
+
+### For Maintainers
+
+To create a new release with downloadable binaries:
+
+1. **Update version number** in [Version.h](src/ghostmem/Version.h) and this README
+2. **Commit and push** your changes
+3. **Create and push a version tag**:
+   ```bash
+   git tag -a v0.9.0 -m "Release version 0.9.0"
+   git push origin v0.9.0
+   ```
+
+4. The [Release workflow](.github/workflows/release.yml) will automatically:
+   - Build binaries for Windows (x64) and Linux (x64)
+   - Create release packages with libraries, headers, and demo
+   - Publish a GitHub Release with downloadable artifacts
+
+Alternatively, trigger a release manually from GitHub Actions:
+- Go to **Actions** → **Release** → **Run workflow**
+- Enter the tag name (e.g., `v0.9.0`)
+
+### Manual Release Build
+
+If you need to build release packages locally:
+
+**Windows:**
+```batch
+.\build.bat
+cd release
+powershell Compress-Archive -Path ghostmem-windows-x64 -DestinationPath ghostmem-windows-x64.zip
+```
+
+**Linux:**
+```bash
+./build.sh
+mkdir -p release/ghostmem-linux-x64/{lib,include,bin}
+cp build/libghostmem_shared.so release/ghostmem-linux-x64/lib/
+cp build/libghostmem.a release/ghostmem-linux-x64/lib/
+cp src/ghostmem/*.h release/ghostmem-linux-x64/include/
+cp build/ghostmem_demo release/ghostmem-linux-x64/bin/
+cd release
+tar -czf ghostmem-linux-x64.tar.gz ghostmem-linux-x64/
+```
 
 ## Credits
 

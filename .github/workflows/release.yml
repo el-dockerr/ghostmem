@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.8.0, v1.0.0, etc.
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v0.8.0)'
+        required: true
+        type: string
+
+jobs:
+  build-release:
+    name: Build Release on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: linux-x64
+            lib_extension: so
+            build_dir: build
+          - os: windows-latest
+            artifact_name: windows-x64
+            lib_extension: dll
+            build_dir: build/Release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup MSVC (Windows)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+      
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.20.x'
+        
+    - name: Configure CMake (Windows)
+      if: runner.os == 'Windows'
+      run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+      
+    - name: Configure CMake (Linux)
+      if: runner.os == 'Linux'
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      
+    - name: Build
+      run: cmake --build build --config Release
+      
+    - name: Package Artifacts (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        mkdir -p release/ghostmem-${{ matrix.artifact_name }}
+        mkdir -p release/ghostmem-${{ matrix.artifact_name }}/lib
+        mkdir -p release/ghostmem-${{ matrix.artifact_name }}/include
+        mkdir -p release/ghostmem-${{ matrix.artifact_name }}/bin
+        
+        # Copy shared library
+        cp build/libghostmem_shared.so release/ghostmem-${{ matrix.artifact_name }}/lib/
+        
+        # Copy static library
+        cp build/libghostmem.a release/ghostmem-${{ matrix.artifact_name }}/lib/
+        
+        # Copy header files
+        cp src/ghostmem/*.h release/ghostmem-${{ matrix.artifact_name }}/include/
+        
+        # Copy demo executable
+        cp build/ghostmem_demo release/ghostmem-${{ matrix.artifact_name }}/bin/
+        
+        # Copy README
+        cp README.md release/ghostmem-${{ matrix.artifact_name }}/
+        
+        # Create tarball
+        cd release
+        tar -czf ghostmem-${{ matrix.artifact_name }}.tar.gz ghostmem-${{ matrix.artifact_name }}/
+        
+    - name: Package Artifacts (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}
+        New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/lib
+        New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/include
+        New-Item -ItemType Directory -Force -Path release/ghostmem-${{ matrix.artifact_name }}/bin
+        
+        # Copy DLL and LIB files
+        Copy-Item build/Release/ghostmem_shared.dll release/ghostmem-${{ matrix.artifact_name }}/lib/
+        Copy-Item build/Release/ghostmem_shared.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
+        Copy-Item build/Release/ghostmem.lib release/ghostmem-${{ matrix.artifact_name }}/lib/
+        
+        # Copy header files
+        Copy-Item src/ghostmem/*.h release/ghostmem-${{ matrix.artifact_name }}/include/
+        
+        # Copy demo executable
+        Copy-Item build/Release/ghostmem_demo.exe release/ghostmem-${{ matrix.artifact_name }}/bin/
+        
+        # Copy README
+        Copy-Item README.md release/ghostmem-${{ matrix.artifact_name }}/
+        
+        # Create zip
+        Compress-Archive -Path release/ghostmem-${{ matrix.artifact_name }} -DestinationPath release/ghostmem-${{ matrix.artifact_name }}.zip
+        
+    - name: Upload Release Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ghostmem-${{ matrix.artifact_name }}
+        path: |
+          release/*.tar.gz
+          release/*.zip
+        retention-days: 1
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: Display structure of downloaded files
+      run: ls -R artifacts
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+        name: GhostMem ${{ github.event.inputs.tag_name || github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          artifacts/ghostmem-linux-x64/*.tar.gz
+          artifacts/ghostmem-windows-x64/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
