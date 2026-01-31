@@ -4,12 +4,12 @@
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
-[![Build and Test](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml)
-[![Release](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml)
+[![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/build-and-test.yml)
+[![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/GhostMem/actions/workflows/release.yml)
 
 ## 📦 Downloads
 
-Pre-built binaries are available from the [Releases page](https://github.com/YOUR_USERNAME/GhostMem/releases).
+Pre-built binaries are available from the [Releases page](https://github.com/el-dockerr/GhostMem/releases).
 
 **Latest Release:**
 - **Windows (x64)**: `ghostmem-windows-x64.zip` - Includes DLL, static library, headers, and demo
