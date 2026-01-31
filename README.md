@@ -1,6 +1,6 @@
 # GhostMem 👻
 
-**Version 0.8.0**
+**Version 0.9.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
@@ -16,7 +16,7 @@ While software vendors carelessly waste memory resources, users are left with tw
 
 ### The Solution: GhostMem
 
-GhostMem is a smart memory management system that extends available RAM through **in-memory compression** rather than traditional disk-based swapping. By intercepting page faults and using high-speed LZ4 compression, GhostMem creates the illusion of having more physical memory than actually available – all without requiring disk I/O or application code changes.
+GhostMem is a thread safe smart memory management system that extends available RAM through **in-memory compression** rather than traditional disk-based swapping. By intercepting page faults and using high-speed LZ4 compression, GhostMem creates the illusion of having more physical memory than actually available – all without requiring disk I/O or application code changes.
 
 **GhostMem lets you reclaim control over your memory.** Run AI models on modest hardware. Deploy sophisticated applications on IoT devices. Stop the vendor-imposed RAM tax.
 
@@ -287,7 +287,7 @@ cd build
   - Gaming applications
 
 ### 🚀 **Features**
-- [ ] Thread safety and multi-threading support
+- ✅ Thread safety and multi-threading support
 - [ ] Proper memory deallocation and lifecycle management
 - [ ] Smart eviction policies (frequency-based, priority, access patterns)
 - [ ] Memory pool support for faster allocation
@@ -296,7 +296,6 @@ cd build
 ## Limitations & Current Status
 
 - **Cross-Platform**: Works on Windows and Linux
-- **Current**: Single-threaded, no thread safety
 - **Current**: No proper memory deallocation (PoC focuses on allocation)
 - **Current**: Static configuration (no runtime tuning)
 - **In Progress**: See Roadmap above for planned improvements

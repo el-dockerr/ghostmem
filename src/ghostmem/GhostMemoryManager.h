@@ -59,6 +59,7 @@
 #include <vector>               // Compressed data storage
 #include <list>                 // LRU page list
 #include <algorithm>            // Standard algorithms
+#include <mutex>                // Thread synchronization
 
 // Third-party includes
 #include "../3rdparty/lz4.h"    // LZ4 compression/decompression
@@ -101,11 +102,26 @@ const size_t MAX_PHYSICAL_PAGES = 5;
  * The system is completely transparent to applications using the
  * GhostAllocator wrapper for STL containers.
  * 
- * Thread Safety: Currently NOT thread-safe. Use from single thread only.
+ * Thread Safety: Thread-safe. All public methods and page fault handlers
+ * use internal mutex synchronization to protect shared data structures.
+ * Multiple threads can safely allocate and access GhostMem memory concurrently.
  */
 class GhostMemoryManager
 {
 private:
+    /**
+     * @brief Mutex protecting all shared data structures
+     * 
+     * This mutex must be locked when accessing or modifying:
+     * - managed_blocks
+     * - backing_store
+     * - active_ram_pages
+     * 
+     * Note: Uses std::recursive_mutex to allow re-entrant locking
+     * within the same thread (e.g., page fault during eviction).
+     */
+    mutable std::recursive_mutex mutex_;
+
     /**
      * @brief Map of all managed virtual memory blocks
      * 

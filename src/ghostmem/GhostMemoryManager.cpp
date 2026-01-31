@@ -53,6 +53,8 @@
 
 void GhostMemoryManager::EvictOldestPage(void *ignore_page)
 {
+    // Note: Caller must hold mutex_
+    
     // While we are over the limit...
     while (active_ram_pages.size() >= MAX_PHYSICAL_PAGES)
     {
@@ -88,6 +90,8 @@ void GhostMemoryManager::EvictOldestPage(void *ignore_page)
 // Internal function: Mark page as "recently used"
 void GhostMemoryManager::MarkPageAsActive(void *page_start)
 {
+    // Note: Caller must hold mutex_
+    
     // First check if it's already in the list (shouldn't be, but better safe than sorry)
     active_ram_pages.remove(page_start);
 
@@ -97,6 +101,8 @@ void GhostMemoryManager::MarkPageAsActive(void *page_start)
 
 void *GhostMemoryManager::AllocateGhost(size_t size)
 {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    
     size_t aligned_size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     
 #ifdef _WIN32
@@ -118,6 +124,8 @@ void *GhostMemoryManager::AllocateGhost(size_t size)
 
 void GhostMemoryManager::FreezePage(void *page_start)
 {
+    // Note: Caller must hold mutex_
+    
     // 1. Compress
     int max_dst_size = LZ4_compressBound(PAGE_SIZE);
     std::vector<char> compressed_data(max_dst_size);
@@ -146,6 +154,9 @@ LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionIn
     {
         ULONG_PTR fault_addr = pExceptionInfo->ExceptionRecord->ExceptionInformation[1];
         auto &manager = Instance();
+        
+        // Lock mutex for thread-safe access to shared data structures
+        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
 
         // Is it our address?
         for (const auto &block : manager.managed_blocks)
@@ -202,6 +213,12 @@ void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
     {
         void *fault_addr = info->si_addr;
         auto &manager = Instance();
+        
+        // Lock mutex for thread-safe access to shared data structures
+        // Note: While mutexes aren't technically async-signal-safe,
+        // this works in practice since the manager is initialized in main
+        // and page faults are handled per-thread by the kernel.
+        std::lock_guard<std::recursive_mutex> lock(manager.mutex_);
 
         // Is it our address?
         for (const auto &block : manager.managed_blocks)

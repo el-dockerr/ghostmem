@@ -84,10 +84,16 @@ if(BUILD_TESTS)
         tests/test_lru.cpp
         tests/test_allocator.cpp
         tests/test_version.cpp
+        tests/test_threading.cpp
     )
     
     target_link_libraries(ghostmem_tests ghostmem)
     target_include_directories(ghostmem_tests PRIVATE tests)
+    
+    # Platform-specific threading support
+    if(NOT WIN32)
+        target_link_libraries(ghostmem_tests pthread)
+    endif()
     
     # Add test to CTest
     add_test(NAME ghostmem_tests COMMAND ghostmem_tests)
