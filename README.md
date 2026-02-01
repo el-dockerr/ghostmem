@@ -298,6 +298,41 @@ cd build
 ./ghostmem_demo
 ```
 
+### Running Tests
+
+The project includes comprehensive test suites for correctness and performance:
+
+**Run all tests:**
+```batch
+# Windows
+cd build\Release
+ghostmem_tests.exe
+
+# Linux
+cd build
+./ghostmem_tests
+```
+
+**Run performance metrics tests only:**
+```batch
+# Windows
+run_metrics.bat
+
+# Linux
+chmod +x run_metrics.sh
+./run_metrics.sh
+```
+
+The metrics tests measure:
+- **Compression ratios** for different data types (text, sparse data, random data)
+- **Memory savings** achieved through compression (typically 60-95%)
+- **Performance overhead** compared to standard C++ allocation (3-5x slowdown)
+- **Speed comparisons** between malloc and GhostMem operations
+
+Results are saved to `metrics_results/` with timestamps for comparison across versions.
+
+For detailed information about performance metrics and how to use them for improvements, see [docs/PERFORMANCE_METRICS.md](docs/PERFORMANCE_METRICS.md).
+
 ## Roadmap
 
 ### 🐧 **Linux & Cross-Platform Support**
@@ -316,12 +351,13 @@ cd build
   - Compression/decompression cycles
   - LRU eviction policy
   - Page fault handling
+- ✅ Performance metrics tests → **[tests/test_metrics.cpp](tests/test_metrics.cpp)**
+  - Compression ratio measurements
+  - Memory savings estimation
+  - Speed comparisons (malloc vs GhostMem)
+  - Access pattern performance
 - [ ] Integration tests with real applications
 - [ ] Stress tests (concurrent access, high memory pressure)
-- [ ] Performance benchmarks
-  - Compression ratios for different data types
-  - Latency measurements
-  - Throughput tests
 - [ ] Memory leak detection and validation
 - ✅ CI/CD pipeline (GitHub Actions)
 
@@ -338,6 +374,11 @@ cd build
   - Multi-threading guarantees and patterns
   - Performance in concurrent scenarios
   - Platform-specific considerations
+- ✅ Performance metrics guide → **[docs/PERFORMANCE_METRICS.md](docs/PERFORMANCE_METRICS.md)**
+  - Understanding compression ratios
+  - Performance benchmarking methodology
+  - How to use metrics for improvements
+  - KPIs and optimization targets
 - [ ] Performance tuning guide
   - Choosing optimal `MAX_PHYSICAL_PAGES`
   - Workload-specific configurations
