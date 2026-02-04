@@ -57,7 +57,7 @@ GhostMem is a thread safe smart memory management system that extends available 
 
 **GhostMem lets you reclaim control over your memory.** Run AI models on modest hardware. Deploy sophisticated applications on IoT devices. Stop the vendor-imposed RAM tax.
 
-This is the practical realization of the scam "DoubleRAM" concept from the 90's, but actually working and mostly production-ready.
+This is the practical realization of the scam "softRAM" concept from the 90's, but actually working and mostly production-ready.
 
 ## How It Works
 
