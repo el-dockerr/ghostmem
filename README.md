@@ -16,6 +16,8 @@
 ## Features:
 * Allows to compress memory of a running program just by adding a simple library
 * Allows to use disk as memory - software can literally run without any usage of RAM
+* **Proper memory lifecycle management** - Full deallocation support with automatic cleanup
+* Thread-safe - Safe for concurrent allocations and deallocations
 * No feature creep inside
 
 ## 📦 Downloads
@@ -396,7 +398,7 @@ For detailed information about performance metrics and how to use them for impro
 
 ### 🚀 **Features**
 - ✅ Thread safety and multi-threading support
-- [ ] Proper memory deallocation and lifecycle management
+- ✅ Proper memory deallocation and lifecycle management
 - [ ] Smart eviction policies (frequency-based, priority, access patterns)
 - [ ] Memory pool support for faster allocation
 - [ ] Statistics and monitoring API
@@ -517,7 +519,7 @@ Copyright (C) 2026 Jasmin Kalini
 
 See the [LICENSE](LICENSE) file for the full GPLv3 license text.
 
-**⚠️ Compliance Notice**: Companies and individuals using GhostMem must comply with GPLv3 terms. Non-compliance will result in legal action to protect open-source rights.
+**⚠️ Compliance Notice**: Companies and individuals using GhostMem must comply with GPLv3 terms. Non-compliance will result in legal action to protect open-source rights. Furthermore I added pattern to identify the usage of GMLib. You are always advised to comply with the license.
 
 ---
 
