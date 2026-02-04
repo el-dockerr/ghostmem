@@ -1,6 +1,8 @@
-# GhostMem 👻
+# **GMlib** - GhostMem Library
 
-**Version 0.10.0**
+![The GMLib Maskot](docs/images/ghostmem-maskot-192x192.png)
+
+**Version 1.0.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
@@ -484,9 +486,13 @@ Built with:
 
 ## License
 
-**GhostMem** is released under the **GNU General Public License v3.0 (GPLv3)**.
+**GhostMem (GMlib)** is released under the **GNU General Public License v3.0 (GPLv3)**.
 
 Copyright (C) 2026 Swen Kalski
+
+**GhostMem Maskot** is also released under the **GNU General Public License v3.0 (GPLv3)** for usage along the GMlib.
+
+Copyright (C) 2026 Jasmin Kalini
 
 ### Important License Information
 
