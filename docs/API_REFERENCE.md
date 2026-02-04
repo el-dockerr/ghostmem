@@ -107,18 +107,108 @@ Virtual Address Space:  [=========== size bytes ===========]
 Physical RAM:           [not allocated until accessed]
 After first access:     [== 4KB page ==][remaining pages...]
 ```
+**Allocation Tracking:**
 
+Each allocation is tracked with metadata:
+
+```cpp
+struct AllocationInfo {
+    void* page_start;      // Page-aligned base address
+    size_t offset;         // Offset within page (0-4095)
+    size_t size;           // Original allocation size
+};
+```
+
+This enables proper deallocation and reference counting for shared pages.
+
+**Notes:**
+- Memory is NOT zeroed initially (only zeroed on first access)
+- Multiple allocations can share the same page
+- Must call `DeallocateGhost()` to free memory (or use `GhostAllocator`)
 ---
 
-##### `void DeallocateGhost(void* ptr)` ⚠️
-Deallocates ghost memory.
+##### `void DeallocateGhost(void* ptr, size_t size)` ✅
+Deallocates memory previously allocated by `AllocateGhost()`.
 
 **Parameters:**
-- `ptr`: Pointer previously returned by `AllocateGhost()`
+- `ptr`: Pointer returned by `AllocateGhost()`
+- `size`: Size passed to `AllocateGhost()` (must match original size)
+
+**Returns:** Nothing (void)
 
 **Thread Safety:** Thread-safe with internal mutex locking.
 
-**Status:** ⚠️ **Currently not fully implemented** - stub exists but memory is not fully released. Planned for future version.
+**Status:** ✅ **Fully Implemented** - Properly releases all resources including compressed data and OS memory.
+
+**Behavior:**
+1. Validates pointer is tracked in allocation metadata
+2. Decrements reference count for all pages in the allocation
+3. For each page with reference count reaching zero:
+   - Removes from active_ram_pages LRU list
+   - Removes compressed data from backing_store (in-memory mode)
+   - Removes disk location from disk_page_locations (disk-backed mode)
+   - Releases physical memory via `VirtualFree` (Windows) or `munmap` (Linux)
+   - Releases virtual memory reservation
+4. Removes allocation from metadata tracking
+
+**Example:**
+```cpp
+// Allocate memory
+void* ptr = GhostMemoryManager::Instance().AllocateGhost(8192);
+if (ptr) {
+    // Use memory
+    int* data = static_cast<int*>(ptr);
+    data[0] = 42;
+    
+    // Deallocate when done
+    GhostMemoryManager::Instance().DeallocateGhost(ptr, 8192);
+}
+```
+
+**Special Cases:**
+- **nullptr**: Safe to pass - function returns immediately without error
+- **Double-free**: Logs warning but doesn't crash - untracked pointer is ignored
+- **Multi-page allocations**: All pages are properly cleaned up
+- **Evicted pages**: Compressed data is cleaned up even if page was swapped out
+
+**Reference Counting:**
+
+Multiple allocations can share the same 4KB page. GhostMem uses reference counting to track active allocations per page:
+
+```
+Page 0x10000:
+├─ Allocation A (refcount=1)
+├─ Allocation B (refcount=2)
+└─ Page freed when refcount reaches 0
+```
+
+Only when all allocations in a page are freed does the page get fully released to the OS.
+
+**Memory Lifecycle:**
+
+```
+Allocate → [Virtual Reserved] → First Access → [Physical Committed]
+                                                        ↓
+                                              Active in RAM
+                                                        ↓
+                                              Evict if needed
+                                                        ↓
+                                        [Compressed in Backing Store]
+                                                        ↓
+                                              Access again?
+                                                        ↓
+                                        Decompress & Restore
+                                                        ↓
+                                            Deallocate Called
+                                                        ↓
+                                      [Fully Released to OS]
+```
+
+**Notes:**
+- Accessing memory after deallocation causes access violation (expected behavior)
+- Deallocation removes both compressed and uncompressed data
+- Thread-safe - can be called concurrently with allocations
+- Compatible with page fault handling and eviction
 
 ---
 

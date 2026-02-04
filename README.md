@@ -406,7 +406,6 @@ For detailed information about performance metrics and how to use them for impro
 ## Limitations & Current Status
 
 - **Cross-Platform**: Works on Windows and Linux
-- **Current**: No proper memory deallocation (PoC focuses on allocation)
 - **Current**: Static configuration (no runtime tuning)
 - **In Progress**: See Roadmap above for planned improvements
 
