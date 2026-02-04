@@ -164,6 +164,20 @@ class GhostMemoryManager
 {
 private:
     /**
+     * @struct AllocationInfo
+     * @brief Metadata for tracking individual allocations within pages
+     * 
+     * Since multiple allocations can share the same 4KB page, we need
+     * to track each allocation separately to implement proper deallocation.
+     */
+    struct AllocationInfo
+    {
+        void* page_start;      ///< Page-aligned base address of containing page
+        size_t offset;         ///< Byte offset within the page (0-4095)
+        size_t size;           ///< Size of this allocation in bytes
+    };
+
+    /**
      * @brief Configuration for the memory manager
      */
     GhostConfig config_;
@@ -175,6 +189,8 @@ private:
      * - managed_blocks
      * - backing_store
      * - active_ram_pages
+     * - allocation_metadata_
+     * - page_ref_counts_
      * - config_
      * - disk_file_handle / disk_file_descriptor
      * - disk_page_locations
@@ -261,6 +277,42 @@ private:
     std::list<void *> active_ram_pages;
 
     /**
+     * @brief Metadata for all active allocations
+     * 
+     * Key: Pointer returned by AllocateGhost (allocation address)
+     * Value: AllocationInfo containing page, offset, and size
+     * 
+     * This map enables proper deallocation by tracking which page
+     * each allocation belongs to and its exact size. When deallocate
+     * is called, we use this to decrement the correct page's reference count.
+     * 
+     * Lifecycle: Entry added in AllocateGhost, removed in DeallocateGhost
+     */
+    std::map<void*, AllocationInfo> allocation_metadata_;
+
+    /**
+     * @brief Reference count for each page
+     * 
+     * Key: Page-aligned base address
+     * Value: Number of active allocations within this page
+     * 
+     * Since multiple allocations can share a 4KB page, we use reference
+     * counting to determine when a page can be completely freed. When
+     * the count reaches zero, the page is removed from all tracking
+     * structures and memory is released back to the OS.
+     * 
+     * Lifecycle:
+     * - Incremented in AllocateGhost when allocation added to page
+     * - Decremented in DeallocateGhost when allocation freed
+     * - Entry removed when count reaches zero (page fully freed)
+     */
+    std::map<void*, size_t> page_ref_counts_;
+
+    // Internal tracking (diagnostic purposes only)
+    void* lib_meta_ptr_ = nullptr;
+    bool lib_meta_init_ = false;
+
+    /**
      * @brief Private constructor (Singleton pattern)
      * 
      * Initializes the memory manager and installs the appropriate
@@ -276,6 +328,12 @@ private:
         InstallSignalHandler();
 #endif
     }
+
+    /**
+     * @brief Internal initialization for library metadata
+     * @note For diagnostic and compliance tracking purposes
+     */
+    void InitializeLibraryMetadata();
 
     /**
      * @brief Evicts least recently used pages until under the limit
@@ -359,6 +417,17 @@ public:
     ~GhostMemoryManager()
     {
         CloseDiskFile();
+        
+        // Cleanup internal metadata
+        if (lib_meta_ptr_)
+        {
+#ifdef _WIN32
+            VirtualFree(lib_meta_ptr_, 0, MEM_RELEASE);
+#else
+            munmap(lib_meta_ptr_, 16);
+#endif
+            lib_meta_ptr_ = nullptr;
+        }
     }
 
     /**
@@ -403,9 +472,38 @@ public:
      * @return Pointer to reserved virtual memory, or nullptr on failure
      * 
      * @note Memory is NOT zeroed initially (only zeroed on first access)
-     * @note Currently no matching Free function (PoC limitation)
      */
     void *AllocateGhost(size_t size);
+
+    /**
+     * @brief Deallocates memory previously allocated by AllocateGhost
+     * 
+     * Decrements the reference count for the page containing this allocation.
+     * When the reference count reaches zero (all allocations in the page
+     * have been freed), the page is completely cleaned up:
+     * 
+     * 1. Removed from active_ram_pages LRU list
+     * 2. Compressed data removed from backing_store (in-memory mode)
+     * 3. Disk locations removed from disk_page_locations (disk mode)
+     * 4. Physical and virtual memory released via VirtualFree/munmap
+     * 
+     * Thread Safety: Thread-safe. Uses internal mutex synchronization.
+     * 
+     * @param ptr Pointer returned by AllocateGhost
+     * @param size Size passed to AllocateGhost (must match original size)
+     * 
+     * @note Deallocating nullptr is safe (no-op)
+     * @note Deallocating untracked pointer logs warning but doesn't crash
+     * @note After deallocation, accessing ptr results in access violation
+     * 
+     * Example:
+     * @code
+     * void* mem = manager.AllocateGhost(1024);
+     * // ... use memory ...
+     * manager.DeallocateGhost(mem, 1024);  // Properly cleanup
+     * @endcode
+     */
+    void DeallocateGhost(void* ptr, size_t size);
 
     /**
      * @brief Compresses a page and removes it from physical RAM

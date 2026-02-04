@@ -104,6 +104,36 @@ void* GhostMemoryManager::AllocateGhost(size_t size) {
 }
 ```
 
+#### DeallocateGhost()
+```cpp
+void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size) {
+    if (ptr == nullptr) return;
+    
+    std::lock_guard<std::recursive_mutex> lock(mutex_);  // Acquire lock
+    
+    // Look up allocation metadata (protected)
+    auto alloc_it = allocation_metadata_.find(ptr);
+    if (alloc_it == allocation_metadata_.end()) {
+        return;  // Untracked pointer
+    }
+    
+    // Decrement reference counts (protected)
+    for (each page in allocation) {
+        page_ref_counts_[page]--;
+        
+        // If last reference, cleanup
+        if (page_ref_counts_[page] == 0) {
+            active_ram_pages.remove(page);      // Protected
+            backing_store.erase(page);          // Protected
+            disk_page_locations.erase(page);    // Protected
+            VirtualFree/munmap(page);           // OS call
+        }
+    }
+    
+    // Lock released automatically
+}
+```
+
 #### Page Fault Handler (Windows)
 ```cpp
 LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionInfo) {

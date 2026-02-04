@@ -18,9 +18,11 @@ struct GhostAllocator {
     }
 
     void deallocate(T* p, size_t n) {
-        // In our PoC we haven't implemented "Free" yet,
-        // but here you would mark the memory as "unused".
-        // For the PoC we leave this empty (Memory leak is okay for demo).
+        // Deallocate memory through our manager
+        // This enables automatic cleanup when STL containers destroy elements
+        if (p != nullptr) {
+            GhostMemoryManager::Instance().DeallocateGhost(p, n * sizeof(T));
+        }
     }
 };
 

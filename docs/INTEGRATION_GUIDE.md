@@ -7,6 +7,7 @@
 - [Integration Methods](#integration-methods)
 - [Custom Allocator Examples](#custom-allocator-examples)
 - [Configuration Best Practices](#configuration-best-practices)
+- [Memory Lifecycle and Deallocation](#memory-lifecycle-and-deallocation)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -725,6 +726,371 @@ for (int i = 0; i < 1000000; i++) {
     vec.push_back(i);  // May cause multiple reallocations
 }
 ```
+
+---
+
+## Memory Lifecycle and Deallocation
+
+### Understanding Memory States
+
+GhostMem memory goes through several states during its lifecycle:
+
+```
+1. VIRTUAL RESERVED → 2. PHYSICAL COMMITTED → 3. ACTIVE IN RAM
+                                                      ↓
+                                              4. EVICTED/COMPRESSED
+                                                      ↓
+                                        5. RESTORED (back to step 3)
+                                                      ↓
+                                              6. DEALLOCATED
+```
+
+**State Descriptions:**
+
+1. **Virtual Reserved** (after `AllocateGhost()`)
+   - Virtual address space reserved
+   - No physical RAM allocated
+   - Page marked as inaccessible
+   - Immediate operation (microseconds)
+
+2. **Physical Committed** (on first access)
+   - Page fault triggers handler
+   - Physical RAM committed for page
+   - Page zeroed and made accessible
+   - Added to LRU tracking
+
+3. **Active in RAM**
+   - Page in physical memory
+   - Direct CPU access (no overhead)
+   - Tracked in `active_ram_pages` list
+   - Subject to LRU eviction
+
+4. **Evicted/Compressed** (when RAM limit reached)
+   - Page compressed with LZ4
+   - Stored in backing store (RAM or disk)
+   - Physical memory released
+   - Virtual address still valid
+
+5. **Restored** (on next access)
+   - Page fault triggers handler
+   - Compressed data decompressed
+   - Physical RAM recommitted
+   - Returns to Active state
+
+6. **Deallocated** (when freed)
+   - Reference count decremented
+   - When count reaches zero:
+     - Removed from all tracking
+     - Compressed data deleted
+     - Virtual and physical memory released
+
+---
+
+### Automatic Deallocation with GhostAllocator
+
+**Recommended Approach:** Use `GhostAllocator` with STL containers for automatic memory management:
+
+```cpp
+#include "ghostmem/GhostAllocator.h"
+#include <vector>
+
+void processData() {
+    // Allocation happens automatically
+    std::vector<int, GhostAllocator<int>> data;
+    data.reserve(1000000);
+    
+    for (int i = 0; i < 1000000; i++) {
+        data.push_back(i);
+    }
+    
+    // Use the data
+    int sum = std::accumulate(data.begin(), data.end(), 0);
+    
+    // Deallocation happens automatically when vector goes out of scope
+    // No manual cleanup needed!
+}
+```
+
+**How It Works:**
+
+When the vector destructor runs, it calls `GhostAllocator::deallocate()`, which:
+1. Calls `GhostMemoryManager::Instance().DeallocateGhost(ptr, size)`
+2. Decrements page reference counts
+3. Frees pages with zero references
+4. Cleans up compressed data
+5. Releases memory back to OS
+
+---
+
+### Manual Deallocation
+
+For direct memory allocation without STL containers:
+
+```cpp
+#include "ghostmem/GhostMemoryManager.h"
+
+void manualAllocation() {
+    auto& mgr = GhostMemoryManager::Instance();
+    
+    // Allocate
+    size_t size = 8192;
+    void* ptr = mgr.AllocateGhost(size);
+    
+    if (ptr) {
+        // Use memory
+        int* data = static_cast<int*>(ptr);
+        data[0] = 42;
+        data[1] = 100;
+        
+        // IMPORTANT: Must deallocate manually
+        mgr.DeallocateGhost(ptr, size);
+    }
+}
+```
+
+**⚠️ Critical Rules:**
+
+1. **Always match size**: Pass same `size` to `DeallocateGhost()` as to `AllocateGhost()`
+2. **Don't double-free**: Each allocation should be freed exactly once
+3. **Don't access after free**: Accessing freed memory causes crash
+4. **Check for nullptr**: `AllocateGhost()` returns nullptr on failure
+
+---
+
+### Reference Counting and Shared Pages
+
+Multiple allocations can share the same 4KB page. GhostMem uses reference counting:
+
+```cpp
+// Example: Two small allocations in same page
+void* ptr1 = mgr.AllocateGhost(1024);  // Page refcount = 1
+void* ptr2 = mgr.AllocateGhost(1024);  // Page refcount = 2 (if same page)
+
+mgr.DeallocateGhost(ptr1, 1024);       // Page refcount = 1
+// Page still in memory, not freed yet
+
+mgr.DeallocateGhost(ptr2, 1024);       // Page refcount = 0
+// Page now fully freed, memory returned to OS
+```
+
+**Visual Representation:**
+
+```
+Page 0x10000000 (4096 bytes):
+├─ Allocation A: bytes 0-1023    (refcount = 1)
+├─ Allocation B: bytes 1024-2047 (refcount = 2)
+└─ Free space: bytes 2048-4095
+
+After deallocate(A):
+├─ Allocation B: bytes 1024-2047 (refcount = 1)
+└─ Free space: bytes 0-1023, 2048-4095
+
+After deallocate(B):
+└─ Page fully freed → released to OS
+```
+
+---
+
+### Deallocation in Different States
+
+#### Scenario 1: Active Page in RAM
+
+```cpp
+void* ptr = mgr.AllocateGhost(4096);
+int* data = static_cast<int*>(ptr);
+data[0] = 42;  // Page is now in RAM
+
+mgr.DeallocateGhost(ptr, 4096);
+// → Removed from active_ram_pages
+// → Physical and virtual memory released
+```
+
+#### Scenario 2: Evicted/Compressed Page
+
+```cpp
+void* ptr1 = mgr.AllocateGhost(4096);
+void* ptr2 = mgr.AllocateGhost(4096);
+// ... allocate more pages to trigger eviction ...
+// ptr1's page gets evicted and compressed
+
+mgr.DeallocateGhost(ptr1, 4096);
+// → Compressed data removed from backing_store
+// → No physical memory to release (already evicted)
+// → Virtual memory reservation released
+```
+
+#### Scenario 3: Multi-Page Allocation
+
+```cpp
+void* ptr = mgr.AllocateGhost(12288);  // 3 pages
+int* data = static_cast<int*>(ptr);
+data[0] = 1;      // First page in RAM
+data[1024] = 2;   // Second page in RAM
+// Third page not accessed yet (still virtual)
+
+mgr.DeallocateGhost(ptr, 12288);
+// → All 3 pages cleaned up
+// → Both committed and uncommitted pages freed
+```
+
+---
+
+### Memory Leak Prevention
+
+**✅ Good Practices:**
+
+```cpp
+// 1. RAII with STL containers (automatic cleanup)
+{
+    std::vector<int, GhostAllocator<int>> vec(10000);
+    // Use vec...
+} // Automatically cleaned up
+
+// 2. Smart pointer wrapper (if needed)
+template<typename T>
+using GhostUniquePtr = std::unique_ptr<T, 
+    std::function<void(T*)>>;
+
+GhostUniquePtr<int[]> makeGhostArray(size_t n) {
+    auto& mgr = GhostMemoryManager::Instance();
+    size_t size = n * sizeof(int);
+    int* ptr = static_cast<int*>(mgr.AllocateGhost(size));
+    
+    return GhostUniquePtr<int[]>(ptr, 
+        [size](int* p) {
+            GhostMemoryManager::Instance().DeallocateGhost(p, size);
+        });
+}
+
+// 3. Clear exception safety
+void processWithExceptionSafety() {
+    auto& mgr = GhostMemoryManager::Instance();
+    void* ptr = mgr.AllocateGhost(4096);
+    
+    try {
+        // Use memory...
+        riskyOperation(ptr);
+    } catch (...) {
+        mgr.DeallocateGhost(ptr, 4096);
+        throw;
+    }
+    
+    mgr.DeallocateGhost(ptr, 4096);
+}
+```
+
+**❌ Common Mistakes:**
+
+```cpp
+// MISTAKE 1: Memory leak - forgot to deallocate
+void leak() {
+    void* ptr = mgr.AllocateGhost(4096);
+    // Use ptr...
+    // Missing: mgr.DeallocateGhost(ptr, 4096);
+}
+
+// MISTAKE 2: Double free
+void doubleFree() {
+    void* ptr = mgr.AllocateGhost(4096);
+    mgr.DeallocateGhost(ptr, 4096);
+    mgr.DeallocateGhost(ptr, 4096);  // ERROR! Second free
+}
+
+// MISTAKE 3: Use after free
+void useAfterFree() {
+    void* ptr = mgr.AllocateGhost(4096);
+    int* data = static_cast<int*>(ptr);
+    mgr.DeallocateGhost(ptr, 4096);
+    data[0] = 42;  // ERROR! Accessing freed memory
+}
+
+// MISTAKE 4: Size mismatch
+void sizeMismatch() {
+    void* ptr = mgr.AllocateGhost(8192);
+    // ...
+    mgr.DeallocateGhost(ptr, 4096);  // ERROR! Wrong size
+}
+```
+
+---
+
+### Thread Safety in Deallocation
+
+Deallocation is fully thread-safe:
+
+```cpp
+#include <thread>
+#include <vector>
+
+void threadSafeDeallocation() {
+    auto& mgr = GhostMemoryManager::Instance();
+    
+    // Allocate in main thread
+    std::vector<void*> ptrs;
+    for (int i = 0; i < 10; i++) {
+        ptrs.push_back(mgr.AllocateGhost(4096));
+    }
+    
+    // Deallocate in parallel threads (safe)
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 10; i++) {
+        threads.emplace_back([&mgr, ptr = ptrs[i]]() {
+            // Thread-safe deallocation
+            mgr.DeallocateGhost(ptr, 4096);
+        });
+    }
+    
+    for (auto& t : threads) {
+        t.join();
+    }
+}
+```
+
+---
+
+### Monitoring Memory Usage
+
+To check for memory leaks or monitor usage:
+
+```cpp
+// Before operations
+size_t allocations_before = /* track your allocations */;
+
+// Perform operations
+{
+    std::vector<int, GhostAllocator<int>> vec(1000);
+    // Use vec...
+}
+
+// After operations
+size_t allocations_after = /* track your allocations */;
+
+// Should be equal if no leaks
+assert(allocations_before == allocations_after);
+```
+
+**Future API (planned):**
+```cpp
+// Not yet implemented - coming in future version
+auto stats = mgr.GetMemoryStats();
+std::cout << "Active pages: " << stats.active_pages << "\n";
+std::cout << "Compressed: " << stats.compressed_bytes << "\n";
+std::cout << "Allocations: " << stats.allocation_count << "\n";
+```
+
+---
+
+### Best Practices Summary
+
+| Practice | Recommendation | Reason |
+|----------|---------------|--------|
+| Use `GhostAllocator` | ✅ Strongly Recommended | Automatic cleanup, exception-safe |
+| Manual `AllocateGhost` | ⚠️ Use with caution | Requires manual `DeallocateGhost` |
+| Match allocation size | ✅ Required | Must pass same size to deallocate |
+| Check for nullptr | ✅ Recommended | Handle allocation failures |
+| Smart pointer wrappers | ✅ Good for complex code | RAII cleanup |
+| Global allocations | ❌ Avoid | Hard to track lifecycle |
+| Mixed allocators | ❌ Don't mix | Use one allocator per object |
 
 ---
 

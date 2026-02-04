@@ -1,6 +1,8 @@
-# GhostMem 👻
+# **GMlib** - GhostMem Library
 
-**Version 0.10.0**
+![The GMLib Maskot](docs/images/ghostmem-maskot-192x192.png)
+
+**Version 1.0.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
@@ -14,6 +16,8 @@
 ## Features:
 * Allows to compress memory of a running program just by adding a simple library
 * Allows to use disk as memory - software can literally run without any usage of RAM
+* **Proper memory lifecycle management** - Full deallocation support with automatic cleanup
+* Thread-safe - Safe for concurrent allocations and deallocations
 * No feature creep inside
 
 ## 📦 Downloads
@@ -55,7 +59,7 @@ GhostMem is a thread safe smart memory management system that extends available 
 
 **GhostMem lets you reclaim control over your memory.** Run AI models on modest hardware. Deploy sophisticated applications on IoT devices. Stop the vendor-imposed RAM tax.
 
-This is the practical realization of the scam "DoubleRAM" concept from the 90's, but actually working and mostly production-ready.
+This is the practical realization of the scam "softRAM" concept from the 90's, but actually working and mostly production-ready.
 
 ## How It Works
 
@@ -298,6 +302,41 @@ cd build
 ./ghostmem_demo
 ```
 
+### Running Tests
+
+The project includes comprehensive test suites for correctness and performance:
+
+**Run all tests:**
+```batch
+# Windows
+cd build\Release
+ghostmem_tests.exe
+
+# Linux
+cd build
+./ghostmem_tests
+```
+
+**Run performance metrics tests only:**
+```batch
+# Windows
+run_metrics.bat
+
+# Linux
+chmod +x run_metrics.sh
+./run_metrics.sh
+```
+
+The metrics tests measure:
+- **Compression ratios** for different data types (text, sparse data, random data)
+- **Memory savings** achieved through compression (typically 60-95%)
+- **Performance overhead** compared to standard C++ allocation (3-5x slowdown)
+- **Speed comparisons** between malloc and GhostMem operations
+
+Results are saved to `metrics_results/` with timestamps for comparison across versions.
+
+For detailed information about performance metrics and how to use them for improvements, see [docs/PERFORMANCE_METRICS.md](docs/PERFORMANCE_METRICS.md).
+
 ## Roadmap
 
 ### 🐧 **Linux & Cross-Platform Support**
@@ -316,12 +355,13 @@ cd build
   - Compression/decompression cycles
   - LRU eviction policy
   - Page fault handling
+- ✅ Performance metrics tests → **[tests/test_metrics.cpp](tests/test_metrics.cpp)**
+  - Compression ratio measurements
+  - Memory savings estimation
+  - Speed comparisons (malloc vs GhostMem)
+  - Access pattern performance
 - [ ] Integration tests with real applications
 - [ ] Stress tests (concurrent access, high memory pressure)
-- [ ] Performance benchmarks
-  - Compression ratios for different data types
-  - Latency measurements
-  - Throughput tests
 - [ ] Memory leak detection and validation
 - ✅ CI/CD pipeline (GitHub Actions)
 
@@ -338,6 +378,11 @@ cd build
   - Multi-threading guarantees and patterns
   - Performance in concurrent scenarios
   - Platform-specific considerations
+- ✅ Performance metrics guide → **[docs/PERFORMANCE_METRICS.md](docs/PERFORMANCE_METRICS.md)**
+  - Understanding compression ratios
+  - Performance benchmarking methodology
+  - How to use metrics for improvements
+  - KPIs and optimization targets
 - [ ] Performance tuning guide
   - Choosing optimal `MAX_PHYSICAL_PAGES`
   - Workload-specific configurations
@@ -353,7 +398,7 @@ cd build
 
 ### 🚀 **Features**
 - ✅ Thread safety and multi-threading support
-- [ ] Proper memory deallocation and lifecycle management
+- ✅ Proper memory deallocation and lifecycle management
 - [ ] Smart eviction policies (frequency-based, priority, access patterns)
 - [ ] Memory pool support for faster allocation
 - [ ] Statistics and monitoring API
@@ -361,7 +406,6 @@ cd build
 ## Limitations & Current Status
 
 - **Cross-Platform**: Works on Windows and Linux
-- **Current**: No proper memory deallocation (PoC focuses on allocation)
 - **Current**: Static configuration (no runtime tuning)
 - **In Progress**: See Roadmap above for planned improvements
 
@@ -443,9 +487,13 @@ Built with:
 
 ## License
 
-**GhostMem** is released under the **GNU General Public License v3.0 (GPLv3)**.
+**GhostMem (GMlib)** is released under the **GNU General Public License v3.0 (GPLv3)**.
 
 Copyright (C) 2026 Swen Kalski
+
+**GhostMem Maskot** is also released under the **GNU General Public License v3.0 (GPLv3)** for usage along the GMlib.
+
+Copyright (C) 2026 Jasmin Kalini
 
 ### Important License Information
 
@@ -470,7 +518,7 @@ Copyright (C) 2026 Swen Kalski
 
 See the [LICENSE](LICENSE) file for the full GPLv3 license text.
 
-**⚠️ Compliance Notice**: Companies and individuals using GhostMem must comply with GPLv3 terms. Non-compliance will result in legal action to protect open-source rights.
+**⚠️ Compliance Notice**: Companies and individuals using GhostMem must comply with GPLv3 terms. Non-compliance will result in legal action to protect open-source rights. Furthermore I added pattern to identify the usage of GMLib. You are always advised to comply with the license.
 
 ---
 
