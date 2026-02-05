@@ -7,7 +7,7 @@
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
 
-
+[![Documentation](https://img.shields.io/badge/docs-online-informational?style=flat&link=https://www.dockerr.blog/software/ghostmem/)](https://www.dockerr.blog/software/ghostmem)
 [![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml)
 [![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/el-dockerr/actions/workflows/release.yml)
 
