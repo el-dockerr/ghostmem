@@ -2,7 +2,7 @@
   <img src="docs/images/ghostmem-maskot-192x192.png" alt="GMlib Logo" width="200"/>
 
 # **GMlib** - GhostMem Library
-**Version 1.0.0**
+**Version 1.0.1**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
