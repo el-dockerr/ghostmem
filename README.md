@@ -1,7 +1,7 @@
+<div align="center">
+  <img src="docs/images/ghostmem-maskot-192x192.png" alt="GMlib Logo" width="200"/>
+
 # **GMlib** - GhostMem Library
-
-![The GMLib Maskot](docs/images/ghostmem-maskot-192x192.png)
-
 **Version 1.0.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
@@ -11,7 +11,7 @@
 [![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml)
 [![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/el-dockerr/actions/workflows/release.yml)
 
-
+</div>
 
 ## Features:
 * Allows to compress memory of a running program just by adding a simple library
