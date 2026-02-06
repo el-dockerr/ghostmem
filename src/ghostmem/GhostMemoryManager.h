@@ -138,6 +138,17 @@ struct GhostConfig
      * Default: true (compress before disk write)
      */
     bool compress_before_disk = true;
+
+    /**
+     * @brief Enable verbose debug logging to console
+     * 
+     * When true, GhostMem outputs detailed operational messages to console
+     * including page evictions, disk operations, and memory management events.
+     * When false (default), all debug output is suppressed for silent operation.
+     * 
+     * Default: false (silent mode)
+     */
+    bool enable_verbose_logging = false;
 };
 
 /**

@@ -620,6 +620,7 @@ void test_concurrent_allocations() {
 
 ## See Also
 
+- [Getting Started Guide](GETTING_STARTED.md) - Quick start with examples
 - [API Reference](API_REFERENCE.md) - Detailed API documentation
 - [Integration Guide](INTEGRATION_GUIDE.md) - How to use GhostMem
 - [Main README](../README.md) - Project overview

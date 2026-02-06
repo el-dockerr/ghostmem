@@ -1,17 +1,17 @@
+<div align="center">
+  <img src="docs/images/ghostmem-maskot-192x192.png" alt="GMlib Logo" width="200"/>
+
 # **GMlib** - GhostMem Library
-
-![The GMLib Maskot](docs/images/ghostmem-maskot-192x192.png)
-
 **Version 1.0.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
 
-
+[![Documentation](https://img.shields.io/badge/docs-online-informational?style=flat&link=https://www.dockerr.blog/software/ghostmem/)](https://www.dockerr.blog/software/ghostmem)
 [![Build and Test](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/el-dockerr/GhostMem/actions/workflows/build-and-test.yml)
 [![Release](https://github.com/el-dockerr/GhostMem/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/el-dockerr/actions/workflows/release.yml)
 
-
+</div>
 
 ## Features:
 * Allows to compress memory of a running program just by adding a simple library
@@ -20,7 +20,15 @@
 * Thread-safe - Safe for concurrent allocations and deallocations
 * No feature creep inside
 
-## 📦 Downloads
+## � Documentation
+
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Quick start with easy examples
+- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Detailed integration instructions
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[Thread Safety](docs/THREAD_SAFETY.md)** - Multi-threading guidelines
+- **[Performance Metrics](docs/PERFORMANCE_METRICS.md)** - Performance testing guide
+
+## �📦 Downloads
 
 Pre-built binaries are available from the [Releases page](https://github.com/el-dockerr/GhostMem/releases).
 
