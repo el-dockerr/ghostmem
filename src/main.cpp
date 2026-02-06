@@ -22,6 +22,7 @@ int main() {
     config.disk_file_path = "ghostmem_demo.swap";
     config.compress_before_disk = true;
     config.max_memory_pages = 5;  // Override default
+    config.enable_verbose_logging = true;  // Enable debug output (optional)
     
     if (!GhostMemoryManager::Instance().Initialize(config)) {
         std::cerr << "Failed to initialize GhostMem with disk backing\n";

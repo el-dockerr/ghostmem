@@ -1177,6 +1177,7 @@ ulimit -a
 
 ## Next Steps
 
+- Start with the [Getting Started Guide](GETTING_STARTED.md) for quick examples
 - Read the [API Reference](API_REFERENCE.md) for detailed function documentation
 - Check [Thread Safety](THREAD_SAFETY.md) for multi-threading guidelines
 - See [examples/](../src/main.cpp) for more code samples

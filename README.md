@@ -20,7 +20,15 @@
 * Thread-safe - Safe for concurrent allocations and deallocations
 * No feature creep inside
 
-## 📦 Downloads
+## � Documentation
+
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Quick start with easy examples
+- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Detailed integration instructions
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[Thread Safety](docs/THREAD_SAFETY.md)** - Multi-threading guidelines
+- **[Performance Metrics](docs/PERFORMANCE_METRICS.md)** - Performance testing guide
+
+## �📦 Downloads
 
 Pre-built binaries are available from the [Releases page](https://github.com/el-dockerr/GhostMem/releases).
 
