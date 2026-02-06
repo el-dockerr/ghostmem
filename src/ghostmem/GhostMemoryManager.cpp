@@ -82,16 +82,25 @@ bool GhostMemoryManager::Initialize(const GhostConfig& config)
     {
         if (!OpenDiskFile())
         {
-            std::cerr << "[GhostMem] ERROR: Failed to open disk file: " 
-                      << config_.disk_file_path << std::endl;
+            if (config_.enable_verbose_logging)
+            {
+                std::cerr << "[GhostMem] ERROR: Failed to open disk file: " 
+                          << config_.disk_file_path << std::endl;
+            }
             return false;
         }
-        std::cout << "[GhostMem] Disk backing enabled: " << config_.disk_file_path 
-                  << " (compress=" << (config_.compress_before_disk ? "yes" : "no") << ")" << std::endl;
+        if (config_.enable_verbose_logging)
+        {
+            std::cout << "[GhostMem] Disk backing enabled: " << config_.disk_file_path 
+                      << " (compress=" << (config_.compress_before_disk ? "yes" : "no") << ")" << std::endl;
+        }
     }
     else
     {
-        std::cout << "[GhostMem] Using in-memory backing store" << std::endl;
+        if (config_.enable_verbose_logging)
+        {
+            std::cout << "[GhostMem] Using in-memory backing store" << std::endl;
+        }
     }
     
     return true;
@@ -308,7 +317,10 @@ void GhostMemoryManager::EvictOldestPage(void *ignore_page)
             munmap(victim, PAGE_SIZE);
 #endif
             
-            std::cout << "[GhostMem] Zombie page freed during eviction: " << victim << std::endl;
+            if (config_.enable_verbose_logging)
+            {
+                std::cout << "[GhostMem] Zombie page freed during eviction: " << victim << std::endl;
+            }
         }
         else
         {
@@ -439,8 +451,11 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
     if (alloc_it == allocation_metadata_.end())
     {
         // Allocation not tracked - could be already freed or invalid pointer
-        std::cerr << "[GhostMem] WARNING: Attempted to deallocate untracked pointer: " 
-                  << ptr << std::endl;
+        if (config_.enable_verbose_logging)
+        {
+            std::cerr << "[GhostMem] WARNING: Attempted to deallocate untracked pointer: " 
+                      << ptr << std::endl;
+        }
         return;
     }
     
@@ -462,8 +477,11 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
         auto ref_it = page_ref_counts_.find(page_start);
         if (ref_it == page_ref_counts_.end())
         {
-            std::cerr << "[GhostMem] ERROR: Page reference count not found for: " 
-                      << page_start << std::endl;
+            if (config_.enable_verbose_logging)
+            {
+                std::cerr << "[GhostMem] ERROR: Page reference count not found for: " 
+                          << page_start << std::endl;
+            }
             continue;
         }
         
@@ -504,7 +522,10 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
             munmap(page_start, PAGE_SIZE);
 #endif
             
-            std::cout << "[GhostMem] Page fully freed: " << page_start << std::endl;
+            if (config_.enable_verbose_logging)
+            {
+                std::cout << "[GhostMem] Page fully freed: " << page_start << std::endl;
+            }
         }
     }
 }

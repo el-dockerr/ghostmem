@@ -460,6 +460,16 @@ list.push_back(3.14);
 
 Configuration structure for customizing GhostMemoryManager behavior, including optional disk-backed storage for compressed pages.
 
+#### Quick Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `use_disk_backing` | `bool` | `false` | Enable disk storage instead of in-memory compression |
+| `disk_file_path` | `std::string` | `"ghostmem.swap"` | Path to disk file for storing compressed pages |
+| `max_memory_pages` | `size_t` | `0` | Max physical pages in RAM (0 = use constant) |
+| `compress_before_disk` | `bool` | `true` | Compress pages before writing to disk |
+| `enable_verbose_logging` | `bool` | `false` | Enable detailed console debug output |
+
 #### Fields
 
 ##### `bool use_disk_backing`
@@ -538,6 +548,48 @@ config.compress_before_disk = false;  // No compression (faster I/O)
 
 ---
 
+##### `bool enable_verbose_logging`
+Enable verbose debug logging to console.
+
+**Default:** `false` (silent operation)
+
+**Behavior:**
+- When `false` (default): GhostMem operates silently with no console output
+- When `true`: Outputs detailed operational messages including:
+  - Initialization status (disk backing, configuration)
+  - Page eviction events
+  - Memory allocation/deallocation messages
+  - Disk I/O operations
+  - Error and warning messages
+
+**Performance Impact:**
+- Negligible when disabled (default)
+- Minor overhead when enabled due to console I/O
+
+**Use Cases:**
+- Development and debugging
+- Monitoring memory behavior
+- Performance analysis
+- Troubleshooting issues
+
+**Example:**
+```cpp
+// Silent mode (production)
+config.enable_verbose_logging = false;
+
+// Verbose mode (development/debugging)
+config.enable_verbose_logging = true;
+```
+
+**Sample Output (when enabled):**
+```
+[GhostMem] Disk backing enabled: ghostmem.swap (compress=yes)
+[GhostMem] Page fully freed: 0x7fff12340000
+[GhostMem] Zombie page freed during eviction: 0x7fff12341000
+```
+
+---
+
 #### Complete Configuration Example
 
 ```cpp
@@ -550,6 +602,7 @@ int main() {
     config.disk_file_path = "myapp_ghost.swap";
     config.compress_before_disk = true;
     config.max_memory_pages = 256;  // 1MB physical RAM
+    config.enable_verbose_logging = false;  // Silent operation (default)
     
     // Initialize before any allocations
     if (!GhostMemoryManager::Instance().Initialize(config)) {
@@ -811,6 +864,7 @@ If a page fault occurs outside ghost memory ranges:
 
 ## See Also
 
+- [Getting Started Guide](GETTING_STARTED.md) - Quick start with examples
 - [Integration Guide](INTEGRATION_GUIDE.md) - How to use GhostMem in your project
 - [Thread Safety](THREAD_SAFETY.md) - Detailed thread safety documentation
 - [Main README](../README.md) - Project overview and quick start
