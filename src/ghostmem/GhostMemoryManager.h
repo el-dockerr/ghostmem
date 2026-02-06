@@ -149,6 +149,22 @@ struct GhostConfig
      * Default: false (silent mode)
      */
     bool enable_verbose_logging = false;
+
+    /**
+     * @brief Enable encryption for disk-backed pages
+     * 
+     * When true, all pages written to disk are encrypted using ChaCha20 stream cipher
+     * with a randomly generated 256-bit key stored in RAM. Each page is encrypted
+     * independently using a unique nonce derived from its memory address.
+     * 
+     * This prevents sensitive data from being readable if someone accesses the swap file.
+     * The encryption key is generated at initialization and exists only in memory.
+     * 
+     * Only applies when use_disk_backing is true.
+     * 
+     * Default: false (no encryption)
+     */
+    bool encrypt_disk_pages = false;
 };
 
 /**
@@ -324,6 +340,20 @@ private:
     bool lib_meta_init_ = false;
 
     /**
+     * @brief Encryption key for disk-backed pages (32 bytes for ChaCha20)
+     * 
+     * Generated once at initialization using platform CSPRNG.
+     * Used to encrypt/decrypt pages when writing to/reading from disk.
+     * Only populated when config_.encrypt_disk_pages is true.
+     */
+    unsigned char encryption_key_[32] = {0};
+
+    /**
+     * @brief Flag indicating if encryption key has been generated
+     */
+    bool encryption_initialized_ = false;
+
+    /**
      * @brief Private constructor (Singleton pattern)
      * 
      * Initializes the memory manager and installs the appropriate
@@ -407,6 +437,43 @@ private:
      * @return true on success, false on I/O error
      */
     bool ReadFromDisk(size_t offset, size_t size, void* buffer);
+
+    /**
+     * @brief Generates a cryptographic random encryption key
+     * 
+     * Uses platform CSPRNG (CryptGenRandom on Windows, /dev/urandom on Linux)
+     * to generate a 256-bit key for ChaCha20 encryption.
+     * 
+     * @return true on success, false if random generation failed
+     */
+    bool GenerateEncryptionKey();
+
+    /**
+     * @brief Encrypts or decrypts a buffer using ChaCha20 stream cipher
+     * 
+     * ChaCha20 is a symmetric cipher, so encryption and decryption use
+     * the same function. Each page uses a unique 96-bit nonce derived
+     * from its memory address, ensuring each page is encrypted differently.
+     * 
+     * @param data Buffer to encrypt/decrypt (modified in place)
+     * @param size Size of the buffer in bytes
+     * @param nonce Unique 12-byte nonce for this encryption operation
+     */
+    void ChaCha20Crypt(unsigned char* data, size_t size, const unsigned char* nonce);
+
+    /**
+     * @brief ChaCha20 quarter round operation
+     * @param state 16-word ChaCha20 state
+     * @param a,b,c,d Indices into state for quarter round
+     */
+    static void ChaCha20QuarterRound(uint32_t* state, int a, int b, int c, int d);
+
+    /**
+     * @brief ChaCha20 block function
+     * @param state Initial 16-word state
+     * @param output 64-byte output buffer for keystream block
+     */
+    static void ChaCha20Block(const uint32_t* state, unsigned char* output);
 
 public:
     /**

@@ -86,6 +86,7 @@ if(BUILD_TESTS)
         tests/test_version.cpp
         tests/test_threading.cpp
         tests/test_disk_backing.cpp
+        tests/test_disk_encryption.cpp
         tests/test_metrics.cpp
         tests/test_deallocation.cpp
     )
