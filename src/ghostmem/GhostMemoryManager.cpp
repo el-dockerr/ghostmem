@@ -48,19 +48,8 @@
 
 #ifdef _WIN32
 // Windows implementation
-#else
-// Linux/POSIX implementation
-#include <cstdio>
-#include <fcntl.h>      // open, O_CREAT, O_RDWR
-#include <sys/stat.h>   // S_IRUSR, S_IWUSR
-#endif
-
-#include "GhostMemoryManager.h"
-#include <iostream>
-#include <cstring>
-
-#ifdef _WIN32
-// Windows implementation
+#include <wincrypt.h>   // CryptGenRandom for secure random numbers
+#pragma comment(lib, "Advapi32.lib")
 #else
 // Linux/POSIX implementation
 #include <cstdio>
@@ -78,29 +67,29 @@ bool GhostMemoryManager::Initialize(const GhostConfig& config)
     
     config_ = config;
     
+    // Generate encryption key if disk encryption is enabled
+    if (config_.use_disk_backing && config_.encrypt_disk_pages)
+    {
+        if (!GenerateEncryptionKey())
+        {
+            dbgmsg("ERROR: Failed to generate encryption key");
+            return false;
+        }
+        dbgmsg("Disk encryption enabled (ChaCha20)");
+    }
+    
     if (config_.use_disk_backing)
     {
         if (!OpenDiskFile())
         {
-            if (config_.enable_verbose_logging)
-            {
-                std::cerr << "[GhostMem] ERROR: Failed to open disk file: " 
-                          << config_.disk_file_path << std::endl;
-            }
+            dbgmsg("ERROR: Failed to open disk file: ", config_.disk_file_path);
             return false;
         }
-        if (config_.enable_verbose_logging)
-        {
-            std::cout << "[GhostMem] Disk backing enabled: " << config_.disk_file_path 
-                      << " (compress=" << (config_.compress_before_disk ? "yes" : "no") << ")" << std::endl;
-        }
+        dbgmsg("Disk backing enabled: ", config_.disk_file_path, " (compress=",(config_.compress_before_disk ? "yes" : "no"), ")");
     }
     else
     {
-        if (config_.enable_verbose_logging)
-        {
-            std::cout << "[GhostMem] Using in-memory backing store" << std::endl;
-        }
+        dbgmsg("[GhostMem] Using in-memory backing store");
     }
     
     return true;
@@ -251,6 +240,155 @@ bool GhostMemoryManager::ReadFromDisk(size_t offset, size_t size, void* buffer)
 }
 
 // ============================================================================
+// Encryption (ChaCha20)
+// ============================================================================
+
+bool GhostMemoryManager::GenerateEncryptionKey()
+{
+    // Note: Caller must hold mutex_
+    
+#ifdef _WIN32
+    // Use Windows CryptoAPI for secure random generation
+    HCRYPTPROV hCryptProv = 0;
+    
+    if (!CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
+    {
+        return false;
+    }
+    
+    BOOL result = CryptGenRandom(hCryptProv, 32, encryption_key_);
+    CryptReleaseContext(hCryptProv, 0);
+    
+    if (!result)
+    {
+        return false;
+    }
+#else
+    // Use /dev/urandom for secure random generation on Linux
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd < 0)
+    {
+        return false;
+    }
+    
+    ssize_t bytes_read = read(fd, encryption_key_, 32);
+    close(fd);
+    
+    if (bytes_read != 32)
+    {
+        return false;
+    }
+#endif
+    
+    encryption_initialized_ = true;
+    return true;
+}
+
+void GhostMemoryManager::ChaCha20QuarterRound(uint32_t* state, int a, int b, int c, int d)
+{
+    state[a] += state[b]; state[d] ^= state[a]; state[d] = (state[d] << 16) | (state[d] >> 16);
+    state[c] += state[d]; state[b] ^= state[c]; state[b] = (state[b] << 12) | (state[b] >> 20);
+    state[a] += state[b]; state[d] ^= state[a]; state[d] = (state[d] << 8)  | (state[d] >> 24);
+    state[c] += state[d]; state[b] ^= state[c]; state[b] = (state[b] << 7)  | (state[b] >> 25);
+}
+
+void GhostMemoryManager::ChaCha20Block(const uint32_t* state, unsigned char* output)
+{
+    uint32_t working_state[16];
+    memcpy(working_state, state, 64);
+    
+    // 20 rounds (10 double rounds)
+    for (int i = 0; i < 10; i++)
+    {
+        // Column rounds
+        ChaCha20QuarterRound(working_state, 0, 4, 8, 12);
+        ChaCha20QuarterRound(working_state, 1, 5, 9, 13);
+        ChaCha20QuarterRound(working_state, 2, 6, 10, 14);
+        ChaCha20QuarterRound(working_state, 3, 7, 11, 15);
+        
+        // Diagonal rounds
+        ChaCha20QuarterRound(working_state, 0, 5, 10, 15);
+        ChaCha20QuarterRound(working_state, 1, 6, 11, 12);
+        ChaCha20QuarterRound(working_state, 2, 7, 8, 13);
+        ChaCha20QuarterRound(working_state, 3, 4, 9, 14);
+    }
+    
+    // Add original state
+    for (int i = 0; i < 16; i++)
+    {
+        working_state[i] += state[i];
+    }
+    
+    // Serialize to little-endian bytes
+    for (int i = 0; i < 16; i++)
+    {
+        output[i * 4 + 0] = (working_state[i] >> 0) & 0xFF;
+        output[i * 4 + 1] = (working_state[i] >> 8) & 0xFF;
+        output[i * 4 + 2] = (working_state[i] >> 16) & 0xFF;
+        output[i * 4 + 3] = (working_state[i] >> 24) & 0xFF;
+    }
+}
+
+void GhostMemoryManager::ChaCha20Crypt(unsigned char* data, size_t size, const unsigned char* nonce)
+{
+    // Note: Caller must hold mutex_
+    
+    if (!encryption_initialized_)
+    {
+        return;  // Encryption not enabled
+    }
+    
+    // ChaCha20 constants "expand 32-byte k"
+    const uint32_t constants[4] = {0x61707865, 0x3320646e, 0x79622d32, 0x6b206574};
+    
+    // Build ChaCha20 state
+    uint32_t state[16];
+    
+    // Constants
+    state[0] = constants[0];
+    state[1] = constants[1];
+    state[2] = constants[2];
+    state[3] = constants[3];
+    
+    // Key (32 bytes = 8 words)
+    for (int i = 0; i < 8; i++)
+    {
+        state[4 + i] = encryption_key_[i * 4 + 0] |
+                       (encryption_key_[i * 4 + 1] << 8) |
+                       (encryption_key_[i * 4 + 2] << 16) |
+                       (encryption_key_[i * 4 + 3] << 24);
+    }
+    
+    // Block counter (starts at 0)
+    state[12] = 0;
+    
+    // Nonce (12 bytes = 3 words)
+    state[13] = nonce[0] | (nonce[1] << 8) | (nonce[2] << 16) | (nonce[3] << 24);
+    state[14] = nonce[4] | (nonce[5] << 8) | (nonce[6] << 16) | (nonce[7] << 24);
+    state[15] = nonce[8] | (nonce[9] << 8) | (nonce[10] << 16) | (nonce[11] << 24);
+    
+    // Process data in 64-byte blocks
+    unsigned char keystream[64];
+    size_t offset = 0;
+    
+    while (offset < size)
+    {
+        // Generate keystream block
+        ChaCha20Block(state, keystream);
+        
+        // XOR with data
+        size_t block_size = (size - offset < 64) ? (size - offset) : 64;
+        for (size_t i = 0; i < block_size; i++)
+        {
+            data[offset + i] ^= keystream[i];
+        }
+        
+        offset += block_size;
+        state[12]++;  // Increment block counter
+    }
+}
+
+// ============================================================================
 // Memory Management
 // ============================================================================
 
@@ -317,10 +455,7 @@ void GhostMemoryManager::EvictOldestPage(void *ignore_page)
             munmap(victim, PAGE_SIZE);
 #endif
             
-            if (config_.enable_verbose_logging)
-            {
-                std::cout << "[GhostMem] Zombie page freed during eviction: " << victim << std::endl;
-            }
+            dbgmsg("Zombie page freed during eviction: ", victim);
         }
         else
         {
@@ -436,6 +571,7 @@ void *GhostMemoryManager::AllocateGhost(size_t size)
     return ptr;
 }
 
+
 void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
 {
     // Handle nullptr gracefully (standard behavior)
@@ -450,12 +586,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
     auto alloc_it = allocation_metadata_.find(ptr);
     if (alloc_it == allocation_metadata_.end())
     {
-        // Allocation not tracked - could be already freed or invalid pointer
-        if (config_.enable_verbose_logging)
-        {
-            std::cerr << "[GhostMem] WARNING: Attempted to deallocate untracked pointer: " 
-                      << ptr << std::endl;
-        }
+        dbgmsg("WARNING: Attempted to deallocate untracked pointer: ", ptr);
         return;
     }
     
@@ -477,11 +608,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
         auto ref_it = page_ref_counts_.find(page_start);
         if (ref_it == page_ref_counts_.end())
         {
-            if (config_.enable_verbose_logging)
-            {
-                std::cerr << "[GhostMem] ERROR: Page reference count not found for: " 
-                          << page_start << std::endl;
-            }
+            dbgmsg("ERROR: Page reference count not found for: ", page_start);
             continue;
         }
         
@@ -521,11 +648,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
             // On Linux, unmap the page
             munmap(page_start, PAGE_SIZE);
 #endif
-            
-            if (config_.enable_verbose_logging)
-            {
-                std::cout << "[GhostMem] Page fully freed: " << page_start << std::endl;
-            }
+            dbgmsg("Page fully freed: ", page_start);
         }
     }
 }
@@ -551,6 +674,20 @@ void GhostMemoryManager::FreezePage(void *page_start)
             
             if (compressed_size > 0)
             {
+                compressed_data.resize(compressed_size);
+                
+                // Encrypt if encryption is enabled
+                if (config_.encrypt_disk_pages)
+                {
+                    // Generate unique nonce from page address
+                    unsigned char nonce[12] = {0};
+                    uintptr_t addr = (uintptr_t)page_start;
+                    memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                    
+                    // Encrypt compressed data in place
+                    ChaCha20Crypt((unsigned char*)compressed_data.data(), compressed_data.size(), nonce);
+                }
+                
                 size_t disk_offset = 0;
                 if (WriteToDisk(compressed_data.data(), compressed_size, disk_offset))
                 {
@@ -559,7 +696,7 @@ void GhostMemoryManager::FreezePage(void *page_start)
                 }
                 else
                 {
-                    std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                    dbgmsg("ERROR: Failed to write page to disk");
                     return;
                 }
             }
@@ -567,14 +704,29 @@ void GhostMemoryManager::FreezePage(void *page_start)
         else
         {
             // Write raw uncompressed page to disk
+            std::vector<unsigned char> page_data(PAGE_SIZE);
+            memcpy(page_data.data(), page_start, PAGE_SIZE);
+            
+            // Encrypt if encryption is enabled
+            if (config_.encrypt_disk_pages)
+            {
+                // Generate unique nonce from page address
+                unsigned char nonce[12] = {0};
+                uintptr_t addr = (uintptr_t)page_start;
+                memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                
+                // Encrypt page data
+                ChaCha20Crypt(page_data.data(), PAGE_SIZE, nonce);
+            }
+            
             size_t disk_offset = 0;
-            if (WriteToDisk(page_start, PAGE_SIZE, disk_offset))
+            if (WriteToDisk(page_data.data(), PAGE_SIZE, disk_offset))
             {
                 disk_page_locations[page_start] = {disk_offset, PAGE_SIZE};
             }
             else
             {
-                std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                dbgmsg("ERROR: Failed to write page to disk");
                 return;
             }
         }
@@ -660,6 +812,19 @@ LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionIn
                                 std::vector<char> compressed_data(data_size);
                                 if (manager.ReadFromDisk(disk_offset, data_size, compressed_data.data()))
                                 {
+                                    // Decrypt if encryption is enabled
+                                    if (manager.config_.encrypt_disk_pages)
+                                    {
+                                        // Generate same nonce used for encryption
+                                        unsigned char nonce[12] = {0};
+                                        uintptr_t addr = (uintptr_t)page_start;
+                                        memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                                        
+                                        // Decrypt in place
+                                        manager.ChaCha20Crypt((unsigned char*)compressed_data.data(), 
+                                                             compressed_data.size(), nonce);
+                                    }
+                                    
                                     LZ4_decompress_safe(compressed_data.data(), (char *)page_start, 
                                                        data_size, PAGE_SIZE);
                                 }
@@ -667,7 +832,23 @@ LONG WINAPI GhostMemoryManager::VectoredHandler(PEXCEPTION_POINTERS pExceptionIn
                             else
                             {
                                 // Read raw uncompressed data
-                                manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_start);
+                                std::vector<unsigned char> page_data(PAGE_SIZE);
+                                if (manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_data.data()))
+                                {
+                                    // Decrypt if encryption is enabled
+                                    if (manager.config_.encrypt_disk_pages)
+                                    {
+                                        // Generate same nonce used for encryption
+                                        unsigned char nonce[12] = {0};
+                                        uintptr_t addr = (uintptr_t)page_start;
+                                        memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                                        
+                                        // Decrypt
+                                        manager.ChaCha20Crypt(page_data.data(), PAGE_SIZE, nonce);
+                                    }
+                                    
+                                    memcpy(page_start, page_data.data(), PAGE_SIZE);
+                                }
                             }
                             
                             // Note: We keep disk_page_locations entry (don't erase)
@@ -755,6 +936,19 @@ void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
                                 std::vector<char> compressed_data(data_size);
                                 if (manager.ReadFromDisk(disk_offset, data_size, compressed_data.data()))
                                 {
+                                    // Decrypt if encryption is enabled
+                                    if (manager.config_.encrypt_disk_pages)
+                                    {
+                                        // Generate same nonce used for encryption
+                                        unsigned char nonce[12] = {0};
+                                        uintptr_t addr = (uintptr_t)page_start;
+                                        memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                                        
+                                        // Decrypt in place
+                                        manager.ChaCha20Crypt((unsigned char*)compressed_data.data(), 
+                                                             compressed_data.size(), nonce);
+                                    }
+                                    
                                     LZ4_decompress_safe(compressed_data.data(), (char *)page_start, 
                                                        data_size, PAGE_SIZE);
                                 }
@@ -762,7 +956,23 @@ void GhostMemoryManager::SignalHandler(int sig, siginfo_t *info, void *context)
                             else
                             {
                                 // Read raw uncompressed data
-                                manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_start);
+                                std::vector<unsigned char> page_data(PAGE_SIZE);
+                                if (manager.ReadFromDisk(disk_offset, PAGE_SIZE, page_data.data()))
+                                {
+                                    // Decrypt if encryption is enabled
+                                    if (manager.config_.encrypt_disk_pages)
+                                    {
+                                        // Generate same nonce used for encryption
+                                        unsigned char nonce[12] = {0};
+                                        uintptr_t addr = (uintptr_t)page_start;
+                                        memcpy(nonce, &addr, sizeof(addr) < 12 ? sizeof(addr) : 12);
+                                        
+                                        // Decrypt
+                                        manager.ChaCha20Crypt(page_data.data(), PAGE_SIZE, nonce);
+                                    }
+                                    
+                                    memcpy(page_start, page_data.data(), PAGE_SIZE);
+                                }
                             }
                             
                             // Note: We keep disk_page_locations entry (don't erase)

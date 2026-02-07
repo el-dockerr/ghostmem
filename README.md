@@ -2,7 +2,7 @@
   <img src="docs/images/ghostmem-maskot-192x192.png" alt="GMlib Logo" width="200"/>
 
 # **GMlib** - GhostMem Library
-**Version 1.0.1**
+**Version 1.1.0**
 
 > **Virtual RAM through Transparent Compression** – A modern memory management system for IoT devices and AI applications
 
@@ -16,8 +16,9 @@
 ## Features:
 * Allows to compress memory of a running program just by adding a simple library
 * Allows to use disk as memory - software can literally run without any usage of RAM
-* **Proper memory lifecycle management** - Full deallocation support with automatic cleanup
+* Proper memory lifecycle management - Full deallocation support with automatic cleanup
 * Thread-safe - Safe for concurrent allocations and deallocations
+* Encryption of disk swap memory alongside compression
 * No feature creep inside
 
 ## � Documentation
@@ -26,6 +27,7 @@
 - **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Detailed integration instructions
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
 - **[Thread Safety](docs/THREAD_SAFETY.md)** - Multi-threading guidelines
+- **[Encryption](docs/ENCRYPTION.md)** - Disk swap encryption guidelines
 - **[Performance Metrics](docs/PERFORMANCE_METRICS.md)** - Performance testing guide
 
 ## �📦 Downloads

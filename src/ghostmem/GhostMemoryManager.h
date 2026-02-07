@@ -61,6 +61,7 @@
 #include <algorithm>            // Standard algorithms
 #include <mutex>                // Thread synchronization
 #include <string>               // String for disk file paths
+#include <iostream>             // for console log
 
 // Third-party includes
 #include "../3rdparty/lz4.h"    // LZ4 compression/decompression
@@ -149,6 +150,22 @@ struct GhostConfig
      * Default: false (silent mode)
      */
     bool enable_verbose_logging = false;
+
+    /**
+     * @brief Enable encryption for disk-backed pages
+     * 
+     * When true, all pages written to disk are encrypted using ChaCha20 stream cipher
+     * with a randomly generated 256-bit key stored in RAM. Each page is encrypted
+     * independently using a unique nonce derived from its memory address.
+     * 
+     * This prevents sensitive data from being readable if someone accesses the swap file.
+     * The encryption key is generated at initialization and exists only in memory.
+     * 
+     * Only applies when use_disk_backing is true.
+     * 
+     * Default: false (no encryption)
+     */
+    bool encrypt_disk_pages = false;
 };
 
 /**
@@ -250,6 +267,7 @@ private:
      */
     std::map<void *, std::pair<size_t, size_t>> disk_page_locations;
 
+
 #ifdef _WIN32
     /**
      * @brief Windows file handle for disk backing
@@ -322,6 +340,20 @@ private:
     // Internal tracking (diagnostic purposes only)
     void* lib_meta_ptr_ = nullptr;
     bool lib_meta_init_ = false;
+
+    /**
+     * @brief Encryption key for disk-backed pages (32 bytes for ChaCha20)
+     * 
+     * Generated once at initialization using platform CSPRNG.
+     * Used to encrypt/decrypt pages when writing to/reading from disk.
+     * Only populated when config_.encrypt_disk_pages is true.
+     */
+    unsigned char encryption_key_[32] = {0};
+
+    /**
+     * @brief Flag indicating if encryption key has been generated
+     */
+    bool encryption_initialized_ = false;
 
     /**
      * @brief Private constructor (Singleton pattern)
@@ -407,6 +439,43 @@ private:
      * @return true on success, false on I/O error
      */
     bool ReadFromDisk(size_t offset, size_t size, void* buffer);
+
+    /**
+     * @brief Generates a cryptographic random encryption key
+     * 
+     * Uses platform CSPRNG (CryptGenRandom on Windows, /dev/urandom on Linux)
+     * to generate a 256-bit key for ChaCha20 encryption.
+     * 
+     * @return true on success, false if random generation failed
+     */
+    bool GenerateEncryptionKey();
+
+    /**
+     * @brief Encrypts or decrypts a buffer using ChaCha20 stream cipher
+     * 
+     * ChaCha20 is a symmetric cipher, so encryption and decryption use
+     * the same function. Each page uses a unique 96-bit nonce derived
+     * from its memory address, ensuring each page is encrypted differently.
+     * 
+     * @param data Buffer to encrypt/decrypt (modified in place)
+     * @param size Size of the buffer in bytes
+     * @param nonce Unique 12-byte nonce for this encryption operation
+     */
+    void ChaCha20Crypt(unsigned char* data, size_t size, const unsigned char* nonce);
+
+    /**
+     * @brief ChaCha20 quarter round operation
+     * @param state 16-word ChaCha20 state
+     * @param a,b,c,d Indices into state for quarter round
+     */
+    static void ChaCha20QuarterRound(uint32_t* state, int a, int b, int c, int d);
+
+    /**
+     * @brief ChaCha20 block function
+     * @param state Initial 16-word state
+     * @param output 64-byte output buffer for keystream block
+     */
+    static void ChaCha20Block(const uint32_t* state, unsigned char* output);
 
 public:
     /**
@@ -533,6 +602,31 @@ public:
      * @note After this call, accessing page_start will trigger a page fault
      */
     void FreezePage(void *page_start);
+
+    /**
+     * @brief output of std::count when verbosity is set
+     *
+     * This simply make use of std::cout or std::cerr when the config
+     * allow verboity.
+     *
+     * When we give a pointer the outstream make use of std::cerr
+     */
+    template<typename... Args>
+    void dbgmsg(Args... args){
+        if(!config_.enable_verbose_logging)
+            return;
+
+        bool use_cerr = ((std::is_pointer_v<Args> && 
+                         !std::is_same_v<std::decay_t<std::remove_pointer_t<Args>>, char>) || ...);
+
+        // Referenz auf den gewählten Stream
+        std::ostream& target = use_cerr ? std::cerr : std::cout;
+        
+        target << "[GMlib] ";
+        ((target << args << " "), ...);
+        target << std::endl;
+        
+    }
 
 #ifdef _WIN32
     /**
