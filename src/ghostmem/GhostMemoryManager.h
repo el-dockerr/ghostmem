@@ -61,6 +61,7 @@
 #include <algorithm>            // Standard algorithms
 #include <mutex>                // Thread synchronization
 #include <string>               // String for disk file paths
+#include <iostream>             // for console log
 
 // Third-party includes
 #include "../3rdparty/lz4.h"    // LZ4 compression/decompression
@@ -265,6 +266,7 @@ private:
      * Only used when config_.use_disk_backing is true.
      */
     std::map<void *, std::pair<size_t, size_t>> disk_page_locations;
+
 
 #ifdef _WIN32
     /**
@@ -600,6 +602,31 @@ public:
      * @note After this call, accessing page_start will trigger a page fault
      */
     void FreezePage(void *page_start);
+
+    /**
+     * @brief output of std::count when verbosity is set
+     *
+     * This simply make use of std::cout or std::cerr when the config
+     * allow verboity.
+     *
+     * When we give a pointer the outstream make use of std::cerr
+     */
+    template<typename... Args>
+    void dbgmsg(Args... args){
+        if(!config_.enable_verbose_logging)
+            return;
+
+        bool use_cerr = ((std::is_pointer_v<Args> && 
+                         !std::is_same_v<std::decay_t<std::remove_pointer_t<Args>>, char>) || ...);
+
+        // Referenz auf den gewählten Stream
+        std::ostream& target = use_cerr ? std::cerr : std::cout;
+        
+        target << "[GMlib] ";
+        ((target << args << " "), ...);
+        target << std::endl;
+        
+    }
 
 #ifdef _WIN32
     /**

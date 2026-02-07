@@ -72,41 +72,24 @@ bool GhostMemoryManager::Initialize(const GhostConfig& config)
     {
         if (!GenerateEncryptionKey())
         {
-            if (config_.enable_verbose_logging)
-            {
-                std::cerr << "[GhostMem] ERROR: Failed to generate encryption key" << std::endl;
-            }
+            dbgmsg("ERROR: Failed to generate encryption key");
             return false;
         }
-        if (config_.enable_verbose_logging)
-        {
-            std::cout << "[GhostMem] Disk encryption enabled (ChaCha20)" << std::endl;
-        }
+        dbgmsg("Disk encryption enabled (ChaCha20)");
     }
     
     if (config_.use_disk_backing)
     {
         if (!OpenDiskFile())
         {
-            if (config_.enable_verbose_logging)
-            {
-                std::cerr << "[GhostMem] ERROR: Failed to open disk file: " 
-                          << config_.disk_file_path << std::endl;
-            }
+            dbgmsg("ERROR: Failed to open disk file: ", config_.disk_file_path);
             return false;
         }
-        if (config_.enable_verbose_logging)
-        {
-            std::cout << "[GhostMem] Disk backing enabled: " << config_.disk_file_path 
-                      << " (compress=" << (config_.compress_before_disk ? "yes" : "no") << ")" << std::endl;
-        }
+        dbgmsg("Disk backing enabled: ", config_.disk_file_path, " (compress=",(config_.compress_before_disk ? "yes" : "no"), ")");
     }
     else
     {
-        if (config_.enable_verbose_logging)
-        {
-            std::cout << "[GhostMem] Using in-memory backing store" << std::endl;
-        }
+        dbgmsg("[GhostMem] Using in-memory backing store");
     }
     
     return true;
@@ -472,10 +455,7 @@ void GhostMemoryManager::EvictOldestPage(void *ignore_page)
             munmap(victim, PAGE_SIZE);
 #endif
             
-            if (config_.enable_verbose_logging)
-            {
-                std::cout << "[GhostMem] Zombie page freed during eviction: " << victim << std::endl;
-            }
+            dbgmsg("Zombie page freed during eviction: ", victim);
         }
         else
         {
@@ -591,6 +571,7 @@ void *GhostMemoryManager::AllocateGhost(size_t size)
     return ptr;
 }
 
+
 void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
 {
     // Handle nullptr gracefully (standard behavior)
@@ -605,12 +586,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
     auto alloc_it = allocation_metadata_.find(ptr);
     if (alloc_it == allocation_metadata_.end())
     {
-        // Allocation not tracked - could be already freed or invalid pointer
-        if (config_.enable_verbose_logging)
-        {
-            std::cerr << "[GhostMem] WARNING: Attempted to deallocate untracked pointer: " 
-                      << ptr << std::endl;
-        }
+        dbgmsg("WARNING: Attempted to deallocate untracked pointer: ", ptr);
         return;
     }
     
@@ -632,11 +608,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
         auto ref_it = page_ref_counts_.find(page_start);
         if (ref_it == page_ref_counts_.end())
         {
-            if (config_.enable_verbose_logging)
-            {
-                std::cerr << "[GhostMem] ERROR: Page reference count not found for: " 
-                          << page_start << std::endl;
-            }
+            dbgmsg("ERROR: Page reference count not found for: ", page_start);
             continue;
         }
         
@@ -676,11 +648,7 @@ void GhostMemoryManager::DeallocateGhost(void* ptr, size_t size)
             // On Linux, unmap the page
             munmap(page_start, PAGE_SIZE);
 #endif
-            
-            if (config_.enable_verbose_logging)
-            {
-                std::cout << "[GhostMem] Page fully freed: " << page_start << std::endl;
-            }
+            dbgmsg("Page fully freed: ", page_start);
         }
     }
 }
@@ -728,7 +696,7 @@ void GhostMemoryManager::FreezePage(void *page_start)
                 }
                 else
                 {
-                    std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                    dbgmsg("ERROR: Failed to write page to disk");
                     return;
                 }
             }
@@ -758,7 +726,7 @@ void GhostMemoryManager::FreezePage(void *page_start)
             }
             else
             {
-                std::cerr << "[GhostMem] ERROR: Failed to write page to disk" << std::endl;
+                dbgmsg("ERROR: Failed to write page to disk");
                 return;
             }
         }
